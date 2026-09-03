@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="500" viewBox="0 0 1100 500">
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600">
   <defs>
     <style>
       .title { font: 700 28px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
@@ -9,27 +9,29 @@
     </style>
     <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#52617a"/></marker>
   </defs>
-  <rect width="1100" height="500" fill="#ffffff"/>
-  <text x="550" y="42" text-anchor="middle" class="title">EditSpace system boundaries</text>
-  <rect x="50" y="100" width="250" height="115" class="box" fill="#e8f0ff"/>
-  <text x="175" y="140" text-anchor="middle" class="label">Graphite endpoint</text>
-  <text x="175" y="168" text-anchor="middle" class="small">SceneKit / RealityKit adapter</text>
-  <text x="175" y="190" text-anchor="middle" class="small">Endpoint-owned collaborator UI</text>
-  <rect x="425" y="85" width="250" height="145" class="box" fill="#efe9ff"/>
-  <text x="550" y="128" text-anchor="middle" class="label">EditSpace Swift</text>
-  <text x="550" y="157" text-anchor="middle" class="small">Operation log + materializer</text>
-  <text x="550" y="179" text-anchor="middle" class="small">Sync engine + compatibility</text>
-  <text x="550" y="201" text-anchor="middle" class="small">Identity + ephemeral presence</text>
-  <rect x="800" y="100" width="250" height="115" class="box" fill="#e8f7ef"/>
-  <text x="925" y="140" text-anchor="middle" class="label">Blender endpoint</text>
-  <text x="925" y="168" text-anchor="middle" class="small">Python protocol implementation</text>
-  <text x="925" y="190" text-anchor="middle" class="small">Blender scene adapter</text>
-  <path d="M300 157 L425 157" class="arrow"/><path d="M800 157 L675 157" class="arrow"/>
-  <rect x="210" y="320" width="270" height="105" class="box" fill="#fff2db"/>
-  <text x="345" y="361" text-anchor="middle" class="label">Transport adapters</text>
-  <text x="345" y="389" text-anchor="middle" class="small">Multipeer / WebSocket / WebRTC</text>
-  <rect x="620" y="320" width="270" height="105" class="box" fill="#ffe9ea"/>
-  <text x="755" y="361" text-anchor="middle" class="label">Append-only stores</text>
-  <text x="755" y="389" text-anchor="middle" class="small">CloudKit / server / SQLite</text>
-  <path d="M500 230 L385 320" class="arrow"/><path d="M600 230 L715 320" class="arrow"/>
+  <rect width="1100" height="600" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" class="title">Specification and implementation hierarchy</text>
+  <rect x="350" y="75" width="400" height="100" class="box" fill="#fff2db"/>
+  <text x="550" y="116" text-anchor="middle" class="label">EditSpace protocol specification</text>
+  <text x="550" y="145" text-anchor="middle" class="small">Language-neutral wire contract and convergence rules</text>
+  <rect x="120" y="245" width="330" height="120" class="box" fill="#efe9ff"/>
+  <text x="285" y="286" text-anchor="middle" class="label">EditSpace Swift</text>
+  <text x="285" y="315" text-anchor="middle" class="small">Reference implementation</text>
+  <text x="285" y="339" text-anchor="middle" class="small">Log • materializer • sync • presence</text>
+  <rect x="650" y="245" width="330" height="120" class="box" fill="#e8f7ef"/>
+  <text x="815" y="286" text-anchor="middle" class="label">EditSpace Python</text>
+  <text x="815" y="315" text-anchor="middle" class="small">Independent protocol implementation</text>
+  <text x="815" y="339" text-anchor="middle" class="small">Same wire messages and merge semantics</text>
+  <path d="M450 165 L325 245" class="arrow"/><path d="M650 165 L775 245" class="arrow"/>
+  <text x="365" y="210" text-anchor="middle" class="small">defines</text><text x="735" y="210" text-anchor="middle" class="small">defines</text>
+  <path d="M450 305 L650 305" class="arrow"/><path d="M650 325 L450 325" class="arrow"/>
+  <text x="550" y="294" text-anchor="middle" class="small">EditSpace wire messages</text>
+  <rect x="120" y="455" width="330" height="95" class="box" fill="#e8f0ff"/>
+  <text x="285" y="493" text-anchor="middle" class="label">Graphite</text>
+  <text x="285" y="522" text-anchor="middle" class="small">imports EditSpace Swift</text>
+  <rect x="650" y="455" width="330" height="95" class="box" fill="#e8f0ff"/>
+  <text x="815" y="493" text-anchor="middle" class="label">Blender plug-in</text>
+  <text x="815" y="522" text-anchor="middle" class="small">imports EditSpace Python</text>
+  <path d="M285 455 L285 365" class="arrow"/><path d="M815 455 L815 365" class="arrow"/>
+  <text x="310" y="414" class="small">imports</text><text x="840" y="414" class="small">imports</text>
 </svg>

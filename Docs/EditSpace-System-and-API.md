@@ -7,7 +7,7 @@ date: September 2026
 
 # Purpose
 
-EditSpace is a language-neutral collaboration protocol for structured 3D editing. This repository is its reference implementation in Swift. Python will be the next implementation for a Blender plug-in.
+EditSpace is a language-neutral collaboration protocol for structured 3D editing. The specification is the source of truth. This repository contains the Swift reference implementation. A separate Python library will implement the same specification, and the Blender plug-in will import that Python library.
 
 The design separates durable edits from ephemeral human presence. An endpoint can render other collaborators, their selections, cursors, rays, cameras, or active tools without placing that transient state in the document history.
 
@@ -26,7 +26,7 @@ The design separates durable edits from ephemeral human presence. An endpoint ca
 
 # Components
 
-The endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `DocumentState`. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
+The specification defines the common wire contract and convergence rules. The Swift and Python libraries descend independently from that specification and exchange the same messages. Graphite imports EditSpace Swift; the Blender plug-in imports EditSpace Python. Within either library, the endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `DocumentState`. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
 
 ![EditSpace synchronization paths](sync-flow.svg)
 

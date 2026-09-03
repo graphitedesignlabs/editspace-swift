@@ -111,18 +111,25 @@ func drawArrow(from start: CGPoint, to end: CGPoint) {
 }
 
 func drawArchitecture() {
-    let height: CGFloat = 225
+    let height: CGFloat = 330
     ensureSpace(height + 12)
     let top = y + 12
-    drawBox(CGRect(x: margin, y: top, width: 135, height: 58), title: "Graphite", detail: "Native scene adapter", color: NSColor(calibratedRed: 0.90, green: 0.94, blue: 1, alpha: 1))
-    drawBox(CGRect(x: margin + 184, y: top - 6, width: 135, height: 70), title: "EditSpace Swift", detail: "Log • merge • presence", color: NSColor(calibratedRed: 0.94, green: 0.91, blue: 1, alpha: 1))
-    drawBox(CGRect(x: margin + 368, y: top, width: 135, height: 58), title: "Blender", detail: "Python scene adapter", color: NSColor(calibratedRed: 0.90, green: 0.97, blue: 0.93, alpha: 1))
-    drawArrow(from: CGPoint(x: margin + 135, y: top + 29), to: CGPoint(x: margin + 184, y: top + 29))
-    drawArrow(from: CGPoint(x: margin + 368, y: top + 29), to: CGPoint(x: margin + 319, y: top + 29))
-    drawBox(CGRect(x: margin + 78, y: top + 120, width: 150, height: 58), title: "Transport adapters", detail: "Peer • WebSocket • WebRTC", color: NSColor(calibratedRed: 1, green: 0.95, blue: 0.86, alpha: 1))
-    drawBox(CGRect(x: margin + 276, y: top + 120, width: 150, height: 58), title: "Append-only stores", detail: "CloudKit • server • SQLite", color: NSColor(calibratedRed: 1, green: 0.91, blue: 0.92, alpha: 1))
-    drawArrow(from: CGPoint(x: margin + 238, y: top + 64), to: CGPoint(x: margin + 153, y: top + 120))
-    drawArrow(from: CGPoint(x: margin + 265, y: top + 64), to: CGPoint(x: margin + 351, y: top + 120))
+    drawBox(CGRect(x: margin + 102, y: top, width: 300, height: 62), title: "EditSpace protocol specification", detail: "Language-neutral contract and convergence rules", color: NSColor(calibratedRed: 1, green: 0.95, blue: 0.86, alpha: 1))
+    drawBox(CGRect(x: margin + 16, y: top + 112, width: 200, height: 66), title: "EditSpace Swift", detail: "Reference implementation", color: NSColor(calibratedRed: 0.94, green: 0.91, blue: 1, alpha: 1))
+    drawBox(CGRect(x: margin + 288, y: top + 112, width: 200, height: 66), title: "EditSpace Python", detail: "Independent implementation", color: NSColor(calibratedRed: 0.90, green: 0.97, blue: 0.93, alpha: 1))
+    drawArrow(from: CGPoint(x: margin + 210, y: top + 62), to: CGPoint(x: margin + 116, y: top + 112))
+    drawArrow(from: CGPoint(x: margin + 294, y: top + 62), to: CGPoint(x: margin + 388, y: top + 112))
+    let defines = NSAttributedString(string: "defines", attributes: [.font: NSFont.systemFont(ofSize: 8), .foregroundColor: NSColor.gray])
+    defines.draw(at: CGPoint(x: margin + 151, y: top + 82))
+    defines.draw(at: CGPoint(x: margin + 326, y: top + 82))
+    drawArrow(from: CGPoint(x: margin + 216, y: top + 137), to: CGPoint(x: margin + 288, y: top + 137))
+    drawArrow(from: CGPoint(x: margin + 288, y: top + 155), to: CGPoint(x: margin + 216, y: top + 155))
+    let wire = NSAttributedString(string: "same wire protocol", attributes: [.font: NSFont.systemFont(ofSize: 7.5), .foregroundColor: NSColor.gray])
+    wire.draw(at: CGPoint(x: margin + 218, y: top + 123))
+    drawBox(CGRect(x: margin + 16, y: top + 242, width: 200, height: 62), title: "Graphite", detail: "imports EditSpace Swift", color: NSColor(calibratedRed: 0.90, green: 0.94, blue: 1, alpha: 1))
+    drawBox(CGRect(x: margin + 288, y: top + 242, width: 200, height: 62), title: "Blender plug-in", detail: "imports EditSpace Python", color: NSColor(calibratedRed: 0.90, green: 0.94, blue: 1, alpha: 1))
+    drawArrow(from: CGPoint(x: margin + 116, y: top + 242), to: CGPoint(x: margin + 116, y: top + 178))
+    drawArrow(from: CGPoint(x: margin + 388, y: top + 242), to: CGPoint(x: margin + 388, y: top + 178))
     y += height
 }
 
