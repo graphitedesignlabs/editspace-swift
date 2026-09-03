@@ -32,7 +32,7 @@ Both the Xcode project and SwiftPM compile the same source and test directories.
 
 ![EditSpace specification and implementation hierarchy](Docs/architecture.png)
 
-The language-neutral specification is the source of truth. The Swift and Python libraries independently implement that specification; neither language implementation defines the other. Graphite imports the Swift library, while the Blender plug-in imports the Python library. An endpoint translates native modelling actions into immutable EditSpace operations. Operations are appended locally before transmission. Peer and durable-store imports are idempotent. Materializers replay the causally ordered log into endpoint-specific state.
+The language-neutral specification is the source of truth. The Swift and Python libraries independently implement that specification; neither language implementation defines the other. GraphiteKit imports the Swift library, and Graphite 3D uses GraphiteKit to serve its users. The Blender plug-in imports the Python library, and Blender hosts that plug-in for Blender users. An endpoint translates native modelling actions into immutable EditSpace operations. Operations are appended locally before transmission. Peer and durable-store imports are idempotent. Materializers replay the causally ordered log into endpoint-specific state.
 
 ![EditSpace durable synchronization and ephemeral presence paths](Docs/sync-flow.png)
 

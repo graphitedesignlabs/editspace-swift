@@ -26,7 +26,7 @@ The design separates durable edits from ephemeral human presence. An endpoint ca
 
 # Components
 
-The specification defines the common wire contract and convergence rules. The Swift and Python libraries descend independently from that specification and exchange the same messages. Graphite imports EditSpace Swift; the Blender plug-in imports EditSpace Python. Within either library, the endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `DocumentState`. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
+The specification defines the common wire contract and convergence rules. The Swift and Python libraries descend independently from that specification and exchange the same messages. GraphiteKit imports EditSpace Swift, and Graphite 3D uses GraphiteKit as its modelling and collaboration library. The Blender plug-in imports EditSpace Python and is hosted by Blender. Graphite 3D users and Blender users interact with their respective applications rather than with the protocol libraries directly. Within either language library, the endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `DocumentState`. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
 
 ![EditSpace synchronization paths](sync-flow.png)
 

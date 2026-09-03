@@ -1,37 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="940" viewBox="0 0 1400 940">
   <defs>
     <style>
-      .title { font: 700 28px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
-      .label { font: 600 18px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
-      .small { font: 400 14px -apple-system, BlinkMacSystemFont, sans-serif; fill: #46536b }
-      .box { stroke: #52617a; stroke-width: 2; rx: 14 }
-      .arrow { stroke: #52617a; stroke-width: 3; fill: none; marker-end: url(#head) }
+      .title { font: 700 34px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .label { font: 650 22px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .small { font: 400 17px -apple-system, BlinkMacSystemFont, sans-serif; fill: #46536b }
+      .edge { font: 500 16px -apple-system, BlinkMacSystemFont, sans-serif; fill: #46536b }
+      .box { stroke: #52617a; stroke-width: 3; rx: 16 }
+      .arrow { stroke: #52617a; stroke-width: 4; fill: none; marker-end: url(#head) }
+      .wire { stroke: #7446dc; stroke-width: 4; fill: none; marker-end: url(#purpleHead) }
+      .user { stroke: #2f6f72; stroke-width: 4; fill: none; marker-end: url(#tealHead) }
     </style>
     <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#52617a"/></marker>
+    <marker id="purpleHead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#7446dc"/></marker>
+    <marker id="tealHead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2f6f72"/></marker>
   </defs>
-  <rect width="1100" height="600" fill="#ffffff"/>
-  <text x="550" y="42" text-anchor="middle" class="title">Specification and implementation hierarchy</text>
-  <rect x="350" y="75" width="400" height="100" class="box" fill="#fff2db"/>
-  <text x="550" y="116" text-anchor="middle" class="label">EditSpace protocol specification</text>
-  <text x="550" y="145" text-anchor="middle" class="small">Language-neutral wire contract and convergence rules</text>
-  <rect x="120" y="245" width="330" height="120" class="box" fill="#efe9ff"/>
-  <text x="285" y="286" text-anchor="middle" class="label">EditSpace Swift</text>
-  <text x="285" y="315" text-anchor="middle" class="small">Reference implementation</text>
-  <text x="285" y="339" text-anchor="middle" class="small">Log • materializer • sync • presence</text>
-  <rect x="650" y="245" width="330" height="120" class="box" fill="#e8f7ef"/>
-  <text x="815" y="286" text-anchor="middle" class="label">EditSpace Python</text>
-  <text x="815" y="315" text-anchor="middle" class="small">Independent protocol implementation</text>
-  <text x="815" y="339" text-anchor="middle" class="small">Same wire messages and merge semantics</text>
-  <path d="M450 165 L325 245" class="arrow"/><path d="M650 165 L775 245" class="arrow"/>
-  <text x="365" y="210" text-anchor="middle" class="small">defines</text><text x="735" y="210" text-anchor="middle" class="small">defines</text>
-  <path d="M450 305 L650 305" class="arrow"/><path d="M650 325 L450 325" class="arrow"/>
-  <text x="550" y="294" text-anchor="middle" class="small">EditSpace wire messages</text>
-  <rect x="120" y="455" width="330" height="95" class="box" fill="#e8f0ff"/>
-  <text x="285" y="493" text-anchor="middle" class="label">Graphite</text>
-  <text x="285" y="522" text-anchor="middle" class="small">imports EditSpace Swift</text>
-  <rect x="650" y="455" width="330" height="95" class="box" fill="#e8f0ff"/>
-  <text x="815" y="493" text-anchor="middle" class="label">Blender plug-in</text>
-  <text x="815" y="522" text-anchor="middle" class="small">imports EditSpace Python</text>
-  <path d="M285 455 L285 365" class="arrow"/><path d="M815 455 L815 365" class="arrow"/>
-  <text x="310" y="414" class="small">imports</text><text x="840" y="414" class="small">imports</text>
+  <rect width="1400" height="940" fill="#ffffff"/>
+  <text x="700" y="48" text-anchor="middle" class="title">EditSpace specification, libraries, applications, and users</text>
+
+  <rect x="440" y="82" width="520" height="105" class="box" fill="#fff2db"/>
+  <text x="700" y="125" text-anchor="middle" class="label">EditSpace protocol specification</text>
+  <text x="700" y="158" text-anchor="middle" class="small">Language-neutral wire contract and convergence rules</text>
+
+  <rect x="130" y="260" width="420" height="118" class="box" fill="#efe9ff"/>
+  <text x="340" y="304" text-anchor="middle" class="label">EditSpace Swift</text>
+  <text x="340" y="336" text-anchor="middle" class="small">Reference implementation</text>
+  <text x="340" y="362" text-anchor="middle" class="small">Log • materializer • sync • presence</text>
+  <rect x="850" y="260" width="420" height="118" class="box" fill="#e8f7ef"/>
+  <text x="1060" y="304" text-anchor="middle" class="label">EditSpace Python</text>
+  <text x="1060" y="336" text-anchor="middle" class="small">Independent protocol implementation</text>
+  <text x="1060" y="362" text-anchor="middle" class="small">Same messages and merge semantics</text>
+  <path d="M565 187 L390 260" class="arrow"/><path d="M835 187 L1010 260" class="arrow"/>
+  <text x="474" y="225" text-anchor="middle" class="edge">defines</text><text x="926" y="225" text-anchor="middle" class="edge">defines</text>
+  <path d="M550 310 L850 310" class="wire"/><path d="M850 338 L550 338" class="wire"/>
+  <text x="700" y="299" text-anchor="middle" class="edge">EditSpace wire messages</text>
+
+  <rect x="130" y="458" width="420" height="90" class="box" fill="#e9e5ff"/>
+  <text x="340" y="495" text-anchor="middle" class="label">GraphiteKit</text>
+  <text x="340" y="524" text-anchor="middle" class="small">imports EditSpace Swift</text>
+  <rect x="850" y="458" width="420" height="90" class="box" fill="#e4f4ed"/>
+  <text x="1060" y="495" text-anchor="middle" class="label">Blender plug-in</text>
+  <text x="1060" y="524" text-anchor="middle" class="small">imports EditSpace Python</text>
+  <path d="M340 458 L340 378" class="arrow"/><path d="M1060 458 L1060 378" class="arrow"/>
+  <text x="365" y="424" class="edge">imports</text><text x="1085" y="424" class="edge">imports</text>
+
+  <rect x="130" y="630" width="420" height="90" class="box" fill="#e8f0ff"/>
+  <text x="340" y="667" text-anchor="middle" class="label">Graphite 3D</text>
+  <text x="340" y="696" text-anchor="middle" class="small">3D authoring application using GraphiteKit</text>
+  <rect x="850" y="630" width="420" height="90" class="box" fill="#e8f0ff"/>
+  <text x="1060" y="667" text-anchor="middle" class="label">Blender</text>
+  <text x="1060" y="696" text-anchor="middle" class="small">Hosts and interacts with the Blender plug-in</text>
+  <path d="M340 630 L340 548" class="arrow"/><path d="M1060 630 L1060 548" class="arrow"/>
+  <text x="365" y="594" class="edge">uses</text><text x="1085" y="594" class="edge">hosts</text>
+
+  <rect x="195" y="820" width="290" height="76" class="box" fill="#e6f5f5"/>
+  <text x="340" y="866" text-anchor="middle" class="label">Graphite 3D user</text>
+  <rect x="915" y="820" width="290" height="76" class="box" fill="#e6f5f5"/>
+  <text x="1060" y="866" text-anchor="middle" class="label">Blender user</text>
+  <path d="M322 820 L322 720" class="user"/><path d="M358 720 L358 820" class="user"/>
+  <path d="M1042 820 L1042 720" class="user"/><path d="M1078 720 L1078 820" class="user"/>
+  <text x="378" y="779" class="edge">interaction</text><text x="1098" y="779" class="edge">interaction</text>
 </svg>
