@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="500" viewBox="0 0 1100 500">
+  <defs>
+    <style>
+      .title { font: 700 28px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .label { font: 600 18px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .small { font: 400 14px -apple-system, BlinkMacSystemFont, sans-serif; fill: #46536b }
+      .box { stroke: #52617a; stroke-width: 2; rx: 14 }
+      .arrow { stroke: #52617a; stroke-width: 3; fill: none; marker-end: url(#head) }
+    </style>
+    <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#52617a"/></marker>
+  </defs>
+  <rect width="1100" height="500" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" class="title">EditSpace system boundaries</text>
+  <rect x="50" y="100" width="250" height="115" class="box" fill="#e8f0ff"/>
+  <text x="175" y="140" text-anchor="middle" class="label">Graphite endpoint</text>
+  <text x="175" y="168" text-anchor="middle" class="small">SceneKit / RealityKit adapter</text>
+  <text x="175" y="190" text-anchor="middle" class="small">Endpoint-owned collaborator UI</text>
+  <rect x="425" y="85" width="250" height="145" class="box" fill="#efe9ff"/>
+  <text x="550" y="128" text-anchor="middle" class="label">EditSpace Swift</text>
+  <text x="550" y="157" text-anchor="middle" class="small">Operation log + materializer</text>
+  <text x="550" y="179" text-anchor="middle" class="small">Sync engine + compatibility</text>
+  <text x="550" y="201" text-anchor="middle" class="small">Identity + ephemeral presence</text>
+  <rect x="800" y="100" width="250" height="115" class="box" fill="#e8f7ef"/>
+  <text x="925" y="140" text-anchor="middle" class="label">Blender endpoint</text>
+  <text x="925" y="168" text-anchor="middle" class="small">Python protocol implementation</text>
+  <text x="925" y="190" text-anchor="middle" class="small">Blender scene adapter</text>
+  <path d="M300 157 L425 157" class="arrow"/><path d="M800 157 L675 157" class="arrow"/>
+  <rect x="210" y="320" width="270" height="105" class="box" fill="#fff2db"/>
+  <text x="345" y="361" text-anchor="middle" class="label">Transport adapters</text>
+  <text x="345" y="389" text-anchor="middle" class="small">Multipeer / WebSocket / WebRTC</text>
+  <rect x="620" y="320" width="270" height="105" class="box" fill="#ffe9ea"/>
+  <text x="755" y="361" text-anchor="middle" class="label">Append-only stores</text>
+  <text x="755" y="389" text-anchor="middle" class="small">CloudKit / server / SQLite</text>
+  <path d="M500 230 L385 320" class="arrow"/><path d="M600 230 L715 320" class="arrow"/>
+</svg>

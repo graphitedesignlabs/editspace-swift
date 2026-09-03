@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="430" viewBox="0 0 1100 430">
+  <defs>
+    <style>
+      .title { font: 700 28px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .label { font: 600 16px -apple-system, BlinkMacSystemFont, sans-serif; fill: #172033 }
+      .small { font: 400 13px -apple-system, BlinkMacSystemFont, sans-serif; fill: #46536b }
+      .box { stroke: #52617a; stroke-width: 2; rx: 12; fill: #f7f9fc }
+      .arrow { stroke: #6f4ad8; stroke-width: 3; fill: none; marker-end: url(#head) }
+    </style>
+    <marker id="head" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6f4ad8"/></marker>
+  </defs>
+  <rect width="1100" height="430" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" class="title">Durable edit and ephemeral presence paths</text>
+  <rect x="30" y="100" width="180" height="80" class="box"/><text x="120" y="134" text-anchor="middle" class="label">Native edit</text><text x="120" y="158" text-anchor="middle" class="small">Graphite or Blender</text>
+  <rect x="280" y="100" width="180" height="80" class="box"/><text x="370" y="134" text-anchor="middle" class="label">Append locally</text><text x="370" y="158" text-anchor="middle" class="small">Operation is immutable</text>
+  <rect x="530" y="100" width="180" height="80" class="box"/><text x="620" y="134" text-anchor="middle" class="label">Peer + store queues</text><text x="620" y="158" text-anchor="middle" class="small">Retry idempotently</text>
+  <rect x="780" y="100" width="270" height="80" class="box"/><text x="915" y="134" text-anchor="middle" class="label">Validate and materialize</text><text x="915" y="158" text-anchor="middle" class="small">Causal order, field registers, tombstones</text>
+  <path d="M210 140 L280 140" class="arrow"/><path d="M460 140 L530 140" class="arrow"/><path d="M710 140 L780 140" class="arrow"/>
+  <rect x="150" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="255" y="319" text-anchor="middle" class="label">Identity + presence</text><text x="255" y="343" text-anchor="middle" class="small">Selection, cursor, active tool</text>
+  <rect x="445" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="550" y="319" text-anchor="middle" class="label">Newest session sequence</text><text x="550" y="343" text-anchor="middle" class="small">TTL removes stale peers</text>
+  <rect x="740" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="845" y="319" text-anchor="middle" class="label">Optional endpoint UI</text><text x="845" y="343" text-anchor="middle" class="small">Never changes document state</text>
+  <path d="M360 325 L445 325" class="arrow"/><path d="M655 325 L740 325" class="arrow"/>
+</svg>
