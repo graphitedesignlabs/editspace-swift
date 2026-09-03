@@ -30,35 +30,11 @@ Both the Xcode project and SwiftPM compile the same source and test directories.
 
 ## System overview
 
-```mermaid
-flowchart TB
-    S[EditSpace protocol specification]
-    SW[EditSpace Swift reference implementation]
-    PY[EditSpace Python implementation]
-    G[Graphite]
-    B[Blender plug-in]
-    S -->|defines| SW
-    S -->|defines| PY
-    G -->|imports| SW
-    B -->|imports| PY
-    SW <-->|EditSpace wire messages| PY
-```
+![EditSpace specification and implementation hierarchy](Docs/architecture.png)
 
 The language-neutral specification is the source of truth. The Swift and Python libraries independently implement that specification; neither language implementation defines the other. Graphite imports the Swift library, while the Blender plug-in imports the Python library. An endpoint translates native modelling actions into immutable EditSpace operations. Operations are appended locally before transmission. Peer and durable-store imports are idempotent. Materializers replay the causally ordered log into endpoint-specific state.
 
-```mermaid
-sequenceDiagram
-    participant A as Authoring endpoint
-    participant L as Local operation log
-    participant P as Peer endpoint
-    participant S as Durable store
-    A->>L: append(operation)
-    L-->>A: accepted
-    A->>P: editspace.operations
-    A->>S: append immutable operation
-    P->>P: validate, deduplicate, materialize
-    P->>S: persist accepted peer operation
-```
+![EditSpace durable synchronization and ephemeral presence paths](Docs/sync-flow.png)
 
 ## Protocol definition
 

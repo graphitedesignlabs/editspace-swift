@@ -174,8 +174,8 @@ for line in markdown.components(separatedBy: .newlines) {
     if line.hasPrefix("```") { flushParagraph(); inCode.toggle(); continue }
     if line.hasPrefix("![") {
         flushParagraph()
-        if line.contains("architecture.svg") { drawArchitecture() }
-        else if line.contains("sync-flow.svg") { drawSyncFlow() }
+        if line.contains("architecture.") { drawArchitecture() }
+        else if line.contains("sync-flow.") { drawSyncFlow() }
         continue
     }
     if line.hasPrefix("#") {
