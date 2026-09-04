@@ -18,6 +18,6 @@
   <path d="M210 140 L280 140" class="arrow"/><path d="M460 140 L530 140" class="arrow"/><path d="M710 140 L780 140" class="arrow"/>
   <rect x="150" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="255" y="319" text-anchor="middle" class="label">Identity + presence</text><text x="255" y="343" text-anchor="middle" class="small">Selection, cursor, active tool</text>
   <rect x="445" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="550" y="319" text-anchor="middle" class="label">Newest session sequence</text><text x="550" y="343" text-anchor="middle" class="small">TTL removes stale peers</text>
-  <rect x="740" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="845" y="319" text-anchor="middle" class="label">Optional endpoint UI</text><text x="845" y="343" text-anchor="middle" class="small">Never changes document state</text>
+  <rect x="740" y="285" width="210" height="80" class="box" fill="#fff7e8"/><text x="845" y="319" text-anchor="middle" class="label">Optional endpoint UI</text><text x="845" y="343" text-anchor="middle" class="small">Never changes space state</text>
   <path d="M360 325 L445 325" class="arrow"/><path d="M655 325 L740 325" class="arrow"/>
 </svg>

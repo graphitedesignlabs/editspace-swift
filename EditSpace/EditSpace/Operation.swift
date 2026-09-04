@@ -15,13 +15,13 @@ public struct Producer: Codable, Equatable, Sendable {
     }
 }
 
-/// An immutable, JSON-serializable edit in an EditSpace document.
+/// An immutable, JSON-serializable edit in a shared EditSpace 3D scene.
 public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
     public static let currentSchemaVersion = 1
 
     public var id: OperationID { operationID }
     public let schemaVersion: Int
-    public let documentID: DocumentID
+    public let spaceID: SpaceID
     public let operationID: OperationID
     public let actorID: ActorID
     public let sequence: Int64
@@ -38,7 +38,7 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
 
     public init(
         schemaVersion: Int = EditOperation.currentSchemaVersion,
-        documentID: DocumentID,
+        spaceID: SpaceID,
         operationID: OperationID? = nil,
         actorID: ActorID,
         sequence: Int64,
@@ -54,7 +54,7 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
         createdAt: Date? = Date()
     ) {
         self.schemaVersion = schemaVersion
-        self.documentID = documentID
+        self.spaceID = spaceID
         self.operationID = operationID ?? OperationID(actorID: actorID, sequence: sequence)
         self.actorID = actorID
         self.sequence = sequence
@@ -75,7 +75,7 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion = "v", documentID = "doc", operationID = "op", actorID = "actor"
+        case schemaVersion = "v", spaceID = "doc", operationID = "op", actorID = "actor"
         case sequence = "seq", dependencies = "deps", action, entity, targetID = "target"
         case sourceID = "source", fields, arguments = "args", requiredFeatures = "features"
         case producer, createdAt
@@ -84,7 +84,7 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? Self.currentSchemaVersion
-        documentID = try container.decode(DocumentID.self, forKey: .documentID)
+        spaceID = try container.decode(SpaceID.self, forKey: .spaceID)
         operationID = try container.decode(OperationID.self, forKey: .operationID)
         actorID = try container.decode(ActorID.self, forKey: .actorID)
         sequence = try container.decode(Int64.self, forKey: .sequence)
@@ -101,37 +101,37 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// A transport-neutral batch of immutable operations.
+/// A transport-neutral batch of immutable shared-space operations.
 public struct OperationEnvelope: Codable, Equatable, Sendable {
     public static let kind = "editspace.operations"
     public static let currentSchemaVersion = 1
 
     public let kind: String
     public let schemaVersion: Int
-    public let documentID: DocumentID
+    public let spaceID: SpaceID
     public let operations: [EditOperation]
 
     public init(
         kind: String = OperationEnvelope.kind,
         schemaVersion: Int = OperationEnvelope.currentSchemaVersion,
-        documentID: DocumentID,
+        spaceID: SpaceID,
         operations: [EditOperation]
     ) {
         self.kind = kind
         self.schemaVersion = schemaVersion
-        self.documentID = documentID
+        self.spaceID = spaceID
         self.operations = operations
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, schemaVersion = "v", documentID = "doc", operations = "ops"
+        case kind, schemaVersion = "v", spaceID = "doc", operations = "ops"
     }
 }
 
 public enum CodecError: Error, Equatable, Sendable {
     case wrongMessageKind(String)
     case unsupportedEnvelopeSchema(Int)
-    case documentMismatch(expected: DocumentID, actual: DocumentID)
+    case spaceMismatch(expected: SpaceID, actual: SpaceID)
 }
 
 /// Canonical JSON codec. Object key order is stable to support hashing and fixtures.
@@ -143,7 +143,7 @@ public enum OperationCodec {
         return try encoder.encode(envelope)
     }
 
-    public static func decode(_ data: Data, expectedDocumentID: DocumentID? = nil) throws -> OperationEnvelope {
+    public static func decode(_ data: Data, expectedSpaceID: SpaceID? = nil) throws -> OperationEnvelope {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let envelope = try decoder.decode(OperationEnvelope.self, from: data)
@@ -151,8 +151,8 @@ public enum OperationCodec {
         guard envelope.schemaVersion <= OperationEnvelope.currentSchemaVersion else {
             throw CodecError.unsupportedEnvelopeSchema(envelope.schemaVersion)
         }
-        if let expectedDocumentID, expectedDocumentID != envelope.documentID {
-            throw CodecError.documentMismatch(expected: expectedDocumentID, actual: envelope.documentID)
+        if let expectedSpaceID, expectedSpaceID != envelope.spaceID {
+            throw CodecError.spaceMismatch(expected: expectedSpaceID, actual: envelope.spaceID)
         }
         return envelope
     }

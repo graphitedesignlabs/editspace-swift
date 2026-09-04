@@ -76,23 +76,23 @@ public struct PresenceEnvelope: Codable, Equatable, Sendable {
 
     public let kind: String
     public let schemaVersion: Int
-    public let documentID: DocumentID
+    public let spaceID: SpaceID
     public let presence: PeerPresence
 
     public init(
         kind: String = PresenceEnvelope.kind,
         schemaVersion: Int = PresenceEnvelope.currentSchemaVersion,
-        documentID: DocumentID,
+        spaceID: SpaceID,
         presence: PeerPresence
     ) {
         self.kind = kind
         self.schemaVersion = schemaVersion
-        self.documentID = documentID
+        self.spaceID = spaceID
         self.presence = presence
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, schemaVersion = "v", documentID = "doc", presence
+        case kind, schemaVersion = "v", spaceID = "doc", presence
     }
 }
 
@@ -105,7 +105,7 @@ public enum PresenceCodec {
         return try encoder.encode(envelope)
     }
 
-    public static func decode(_ data: Data, expectedDocumentID: DocumentID? = nil) throws -> PresenceEnvelope {
+    public static func decode(_ data: Data, expectedSpaceID: SpaceID? = nil) throws -> PresenceEnvelope {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let envelope = try decoder.decode(PresenceEnvelope.self, from: data)
@@ -113,8 +113,8 @@ public enum PresenceCodec {
         guard envelope.schemaVersion <= PresenceEnvelope.currentSchemaVersion else {
             throw CodecError.unsupportedEnvelopeSchema(envelope.schemaVersion)
         }
-        if let expectedDocumentID, expectedDocumentID != envelope.documentID {
-            throw CodecError.documentMismatch(expected: expectedDocumentID, actual: envelope.documentID)
+        if let expectedSpaceID, expectedSpaceID != envelope.spaceID {
+            throw CodecError.spaceMismatch(expected: expectedSpaceID, actual: envelope.spaceID)
         }
         return envelope
     }

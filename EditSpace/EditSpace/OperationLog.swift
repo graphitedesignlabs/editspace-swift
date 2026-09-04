@@ -8,14 +8,14 @@ public enum AppendResult: Equatable, Sendable {
 
 /// An immutable, idempotent operation set. Unsupported operations remain preserved.
 public struct OperationLog: Sendable {
-    public let documentID: DocumentID
+    public let spaceID: SpaceID
     public let compatibilityPolicy: CompatibilityPolicy
     public private(set) var operationsByID: [OperationID: EditOperation] = [:]
     public private(set) var rejectedOperationsByID: [OperationID: EditOperation] = [:]
     public private(set) var problems: [CompatibilityProblem] = []
 
-    public init(documentID: DocumentID, compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
-        self.documentID = documentID
+    public init(spaceID: SpaceID, compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
+        self.spaceID = spaceID
         self.compatibilityPolicy = compatibilityPolicy
     }
 
@@ -35,7 +35,7 @@ public struct OperationLog: Sendable {
             return .duplicate
         }
 
-        let operationProblems = compatibilityPolicy.problems(for: operation, expectedDocumentID: documentID)
+        let operationProblems = compatibilityPolicy.problems(for: operation, expectedSpaceID: spaceID)
         guard operationProblems.isEmpty else {
             rejectedOperationsByID[operation.operationID] = operation
             problems.append(contentsOf: operationProblems)

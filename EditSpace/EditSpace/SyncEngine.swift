@@ -22,14 +22,14 @@ public struct SyncResult: Equatable, Sendable {
 
 /// The transport-independent reference sync engine.
 public struct SyncEngine: Sendable {
-    public let documentID: DocumentID
+    public let spaceID: SpaceID
     public private(set) var log: OperationLog
     public private(set) var pendingPeerOperationIDs: [OperationID] = []
     public private(set) var pendingStoreOperationIDs: [OperationID] = []
 
-    public init(documentID: DocumentID, compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
-        self.documentID = documentID
-        self.log = OperationLog(documentID: documentID, compatibilityPolicy: compatibilityPolicy)
+    public init(spaceID: SpaceID, compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
+        self.spaceID = spaceID
+        self.log = OperationLog(spaceID: spaceID, compatibilityPolicy: compatibilityPolicy)
     }
 
     @discardableResult
@@ -64,7 +64,7 @@ public struct SyncEngine: Sendable {
         pendingStoreOperationIDs.removeAll { operationIDs.contains($0) }
     }
 
-    public var state: DocumentState { Materializer.materialize(log) }
+    public var state: SpaceState { Materializer.materialize(log) }
 
     private static func enqueue(_ operationIDs: [OperationID], in queue: inout [OperationID]) {
         let existing = Set(queue)
@@ -74,7 +74,7 @@ public struct SyncEngine: Sendable {
     private func envelope(from queue: [OperationID], maximumOperationCount: Int) -> OperationEnvelope? {
         let batch = Array(queue.prefix(max(1, maximumOperationCount))).compactMap { log.operationsByID[$0] }
         guard !batch.isEmpty else { return nil }
-        return OperationEnvelope(documentID: documentID, operations: batch)
+        return OperationEnvelope(spaceID: spaceID, operations: batch)
     }
 
     private func operations(from queue: [OperationID], maximumOperationCount: Int) -> [EditOperation] {
@@ -90,5 +90,5 @@ public protocol OperationTransport: Sendable {
 /// Adapters implement this interface for CloudKit, a server, SQLite, or another append-only store.
 public protocol OperationStore: Sendable {
     func append(_ operations: [EditOperation]) async throws
-    func fetch(documentID: DocumentID, after cursor: String?) async throws -> (operations: [EditOperation], cursor: String?)
+    func fetch(spaceID: SpaceID, after cursor: String?) async throws -> (operations: [EditOperation], cursor: String?)
 }

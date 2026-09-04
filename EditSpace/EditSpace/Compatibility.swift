@@ -5,7 +5,7 @@ public enum CompatibilityProblemKind: String, Codable, Sendable {
     case unsupportedAction
     case unsupportedEntity
     case unsupportedFeature
-    case documentMismatch
+    case spaceMismatch
     case invalidOperation
     case operationIDCollision
 }
@@ -48,8 +48,8 @@ public struct CompatibilityPolicy: Sendable {
     public init(
         supportedSchemaVersion: Int = EditOperation.currentSchemaVersion,
         supportedActions: Set<OperationAction> = [.create, .update, .delete, .duplicate, .link, .unlink],
-        supportedEntities: Set<EntityKind> = [.document, .object, .modifier, .material, .asset, .constraint, .parameter, .dependency, .legacySnapshot],
-        supportedFeatures: Set<Feature> = [.coreV1, .crudV1, .duplicateV1, .linkedDuplicateV1, .dependencyGraphV1, .presenceV1]
+        supportedEntities: Set<EntityKind> = [.space, .document, .object, .mesh, .vertex, .face, .modifier, .material, .asset, .constraint, .parameter, .dependency, .legacySnapshot],
+        supportedFeatures: Set<Feature> = [.coreV1, .scene3DV1, .meshV1, .modifiersV1, .pbrMaterialV1, .crudV1, .duplicateV1, .linkedDuplicateV1, .dependencyGraphV1, .presenceV1]
     ) {
         self.supportedSchemaVersion = supportedSchemaVersion
         self.supportedActions = supportedActions
@@ -57,7 +57,7 @@ public struct CompatibilityPolicy: Sendable {
         self.supportedFeatures = supportedFeatures
     }
 
-    public func problems(for operation: EditOperation, expectedDocumentID: DocumentID? = nil) -> [CompatibilityProblem] {
+    public func problems(for operation: EditOperation, expectedSpaceID: SpaceID? = nil) -> [CompatibilityProblem] {
         var result: [CompatibilityProblem] = []
         func problem(_ kind: CompatibilityProblemKind, _ message: String, features: [Feature] = []) {
             result.append(CompatibilityProblem(
@@ -70,8 +70,8 @@ public struct CompatibilityPolicy: Sendable {
             ))
         }
 
-        if let expectedDocumentID, expectedDocumentID != operation.documentID {
-            problem(.documentMismatch, "Document \(operation.documentID) does not match \(expectedDocumentID)")
+        if let expectedSpaceID, expectedSpaceID != operation.spaceID {
+            problem(.spaceMismatch, "Space \(operation.spaceID) does not match \(expectedSpaceID)")
         }
         if operation.schemaVersion > supportedSchemaVersion {
             problem(.unsupportedSchema, "Schema \(operation.schemaVersion) is newer than \(supportedSchemaVersion)")
@@ -84,12 +84,109 @@ public struct CompatibilityPolicy: Sendable {
         }
         let features = operation.requiredFeatures.filter { !supportedFeatures.contains($0) }
         if !features.isEmpty { problem(.unsupportedFeature, "Unsupported features", features: features) }
-        if operation.entity != .document && operation.targetID == nil && operation.action != .link && operation.action != .unlink {
-            problem(.invalidOperation, "A non-document operation requires target")
+        if operation.entity != .space && operation.entity != .document && operation.targetID == nil && operation.action != .link && operation.action != .unlink {
+            problem(.invalidOperation, "A non-space operation requires target")
         }
         if operation.action == .duplicate && operation.sourceID == nil {
             problem(.invalidOperation, "Duplicate requires source")
         }
+        for message in SceneFieldValidator.errors(for: operation) {
+            problem(.invalidOperation, message)
+        }
         return result
+    }
+}
+
+/// Validates the standardized EditSpace v1 3D field shapes that JSON typing alone cannot express.
+public enum SceneFieldValidator {
+    public static func errors(for operation: EditOperation) -> [String] {
+        let fields = operation.fields
+        var errors: [String] = []
+        func requireVector(_ key: String, count: Int) {
+            guard let value = fields[key] else { return }
+            if !isNumberArray(value, count: count) { errors.append("Field \(key) must contain exactly \(count) finite numbers") }
+        }
+        func requireUnitInterval(_ key: String) {
+            guard let number = fields[key]?.numberValue else {
+                if fields[key] != nil { errors.append("Field \(key) must be a number") }
+                return
+            }
+            if !number.isFinite || !(0...1).contains(number) { errors.append("Field \(key) must be in 0...1") }
+        }
+
+        switch operation.entity {
+        case .object:
+            requireVector(SceneField.transform.rawValue, count: 16)
+            requireVector(SceneField.pivot.rawValue, count: 16)
+            requireVector(SceneField.position.rawValue, count: 3)
+            requireVector(SceneField.orientation.rawValue, count: 4)
+            requireVector(SceneField.quaternion.rawValue, count: 4)
+            requireVector(SceneField.scale.rawValue, count: 3)
+            requireUnitInterval(SceneField.opacity.rawValue)
+        case .mesh:
+            errors.append(contentsOf: meshErrors(fields))
+        case .vertex:
+            requireVector(SceneField.position.rawValue, count: 3)
+        case .material:
+            for key in [SceneField.baseColor.rawValue, "emissiveColor"] {
+                guard let value = fields[key] else { continue }
+                if !isColor(value) { errors.append("Field \(key) must be an sRGB RGBA color") }
+            }
+            requireUnitInterval(SceneField.metallic.rawValue)
+            requireUnitInterval(SceneField.roughness.rawValue)
+            requireUnitInterval(SceneField.opacity.rawValue)
+        default:
+            break
+        }
+        return errors
+    }
+
+    private static func meshErrors(_ fields: [String: Value]) -> [String] {
+        guard let positionValues = fields[SceneField.positions.rawValue]?.arrayValue else {
+            return fields[SceneField.positions.rawValue] == nil ? [] : ["Mesh positions must be an array of vec3 values"]
+        }
+        guard positionValues.allSatisfy({ isNumberArray($0, count: 3) }) else {
+            return ["Mesh positions must be an array of vec3 values"]
+        }
+        var errors: [String] = []
+        for key in [SceneField.normals.rawValue] {
+            guard let values = fields[key]?.arrayValue else {
+                if fields[key] != nil { errors.append("Mesh \(key) must be an array") }
+                continue
+            }
+            if values.count != positionValues.count || !values.allSatisfy({ isNumberArray($0, count: 3) }) {
+                errors.append("Mesh \(key) must contain one vec3 per position")
+            }
+        }
+        if let faces = fields[SceneField.faces.rawValue]?.arrayValue {
+            for face in faces {
+                guard let indices = face.arrayValue, indices.count >= 3 else {
+                    errors.append("Every mesh face must contain at least three indices")
+                    continue
+                }
+                if indices.contains(where: { value in
+                    guard let number = value.numberValue else { return true }
+                    return !number.isFinite || number.rounded() != number || number < 0 || number >= Double(positionValues.count)
+                }) {
+                    errors.append("Mesh face index is outside positions")
+                }
+            }
+        } else if fields[SceneField.faces.rawValue] != nil {
+            errors.append("Mesh faces must be an array")
+        }
+        return errors
+    }
+
+    private static func isNumberArray(_ value: Value, count: Int) -> Bool {
+        guard let values = value.arrayValue, values.count == count else { return false }
+        return values.allSatisfy { $0.numberValue?.isFinite == true }
+    }
+
+    private static func isColor(_ value: Value) -> Bool {
+        guard let values = value.arrayValue, values.count == 4 else { return false }
+        return values.allSatisfy { component in
+            guard let number = component.numberValue else { return false }
+            return number.isFinite && (0...1).contains(number)
+        }
     }
 }

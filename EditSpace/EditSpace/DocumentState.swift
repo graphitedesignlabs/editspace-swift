@@ -42,13 +42,13 @@ public struct EntityState: Equatable, Sendable {
     mutating func unlink(_ reference: EntityReference) { links.remove(reference) }
 }
 
-public struct DocumentState: Equatable, Sendable {
-    public let documentID: DocumentID
+public struct SpaceState: Equatable, Sendable {
+    public let spaceID: SpaceID
     public private(set) var entities: [EntityReference: EntityState]
     public private(set) var unappliedOperations: [EditOperation]
 
-    public init(documentID: DocumentID, entities: [EntityReference: EntityState] = [:], unappliedOperations: [EditOperation] = []) {
-        self.documentID = documentID
+    public init(spaceID: SpaceID, entities: [EntityReference: EntityState] = [:], unappliedOperations: [EditOperation] = []) {
+        self.spaceID = spaceID
         self.entities = entities
         self.unappliedOperations = unappliedOperations
     }
@@ -56,3 +56,7 @@ public struct DocumentState: Equatable, Sendable {
     mutating func set(_ entity: EntityState) { entities[entity.reference] = entity }
     mutating func deferOperation(_ operation: EditOperation) { unappliedOperations.append(operation) }
 }
+
+/// The early-v1 source-compatibility spelling for ``SpaceState``.
+@available(*, deprecated, renamed: "SpaceState")
+public typealias DocumentState = SpaceState

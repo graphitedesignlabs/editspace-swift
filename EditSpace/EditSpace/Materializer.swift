@@ -1,14 +1,14 @@
 import Foundation
 
-/// Deterministically reduces an operation log into a renderable document state.
+/// Deterministically reduces an operation log into a renderable shared 3D space.
 public enum Materializer {
-    public static func materialize(_ log: OperationLog) -> DocumentState {
-        var state = DocumentState(documentID: log.documentID)
+    public static func materialize(_ log: OperationLog) -> SpaceState {
+        var state = SpaceState(spaceID: log.spaceID)
         for operation in log.operations { apply(operation, to: &state) }
         return state
     }
 
-    private static func apply(_ operation: EditOperation, to state: inout DocumentState) {
+    private static func apply(_ operation: EditOperation, to state: inout SpaceState) {
         guard let targetID = operation.targetID else {
             state.deferOperation(operation)
             return

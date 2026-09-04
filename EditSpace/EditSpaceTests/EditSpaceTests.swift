@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import EditSpace
 
-private let documentID = DocumentID(rawValue: "scene")
+private let spaceID = SpaceID(rawValue: "scene")
 private let objectID = EntityID(rawValue: "cube")
 
 private func operation(
@@ -13,7 +13,7 @@ private func operation(
     dependencies: [OperationID] = []
 ) -> EditOperation {
     EditOperation(
-        documentID: documentID,
+        spaceID: spaceID,
         actorID: ActorID(rawValue: actor),
         sequence: sequence,
         dependencies: dependencies,
@@ -27,7 +27,7 @@ private func operation(
 
 @Test func operationEnvelopeRoundTripsAsCanonicalJSON() throws {
     let create = operation(actor: "a", sequence: 1, action: .create, fields: ["name": .string("Cube")])
-    let envelope = OperationEnvelope(documentID: documentID, operations: [create])
+    let envelope = OperationEnvelope(spaceID: spaceID, operations: [create])
     let data = try OperationCodec.encode(envelope)
     #expect(try OperationCodec.decode(data) == envelope)
     #expect(String(decoding: data, as: UTF8.self).contains("\"kind\":\"editspace.operations\""))
@@ -37,8 +37,8 @@ private func operation(
     let create = operation(actor: "a", sequence: 1, action: .create, fields: ["x": .number(0)])
     let updateA = operation(actor: "a", sequence: 2, action: .update, fields: ["x": .number(1)])
     let updateB = operation(actor: "b", sequence: 2, action: .update, fields: ["x": .number(2)])
-    var first = OperationLog(documentID: documentID)
-    var second = OperationLog(documentID: documentID)
+    var first = OperationLog(spaceID: spaceID)
+    var second = OperationLog(spaceID: spaceID)
     [create, updateA, updateB].forEach { _ = first.append($0) }
     [updateB, create, updateA].forEach { _ = second.append($0) }
     #expect(Materializer.materialize(first) == Materializer.materialize(second))
@@ -48,7 +48,7 @@ private func operation(
 
 @Test func duplicatesAreIdempotentAndCollisionsAreRejected() {
     let create = operation(actor: "a", sequence: 1, action: .create)
-    var log = OperationLog(documentID: documentID)
+    var log = OperationLog(spaceID: spaceID)
     #expect(log.append(create) == .accepted)
     #expect(log.append(create) == .duplicate)
     let collision = operation(actor: "a", sequence: 1, action: .create, fields: ["x": .number(1)])
@@ -78,7 +78,7 @@ private func operation(
         sequence: 1,
         updatedAt: Date(timeIntervalSince1970: 1_788_460_800)
     )
-    let envelope = PresenceEnvelope(documentID: documentID, presence: presence)
+    let envelope = PresenceEnvelope(spaceID: spaceID, presence: presence)
     #expect(try PresenceCodec.decode(PresenceCodec.encode(envelope)) == envelope)
 }
 
@@ -93,9 +93,69 @@ private func operation(
 
 @Test func syncEngineRoutesAcceptedOperationsBySource() {
     let create = operation(actor: "a", sequence: 1, action: .create)
-    var engine = SyncEngine(documentID: documentID)
+    var engine = SyncEngine(spaceID: spaceID)
     let result = engine.append([create], source: .local)
     #expect(result.accepted == [create.operationID])
     #expect(engine.pendingPeerOperationIDs == [create.operationID])
     #expect(engine.pendingStoreOperationIDs == [create.operationID])
+}
+
+@Test func sharedSpaceSceneFieldsValidate() {
+    let transform = Value.matrix4([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 1, 0, 1
+    ])
+    guard let transform else {
+        Issue.record("Expected a valid 4×4 transform")
+        return
+    }
+    let create = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 1,
+        action: .create,
+        entity: .object,
+        targetID: objectID,
+        fields: [
+            SceneField.objectType.rawValue: .string("mesh"),
+            SceneField.transform.rawValue: transform
+        ],
+        requiredFeatures: [.scene3DV1],
+        createdAt: nil
+    )
+    #expect(create.spaceID == spaceID)
+    #expect(SceneFieldValidator.errors(for: create).isEmpty)
+}
+
+@Test func malformedTransformAndMeshIndicesAreRejected() {
+    let malformedTransform = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 1,
+        action: .create,
+        entity: .object,
+        targetID: objectID,
+        fields: [SceneField.transform.rawValue: .array([.number(1)])],
+        requiredFeatures: [.scene3DV1],
+        createdAt: nil
+    )
+    #expect(!SceneFieldValidator.errors(for: malformedTransform).isEmpty)
+
+    let malformedMesh = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 2,
+        action: .create,
+        entity: .mesh,
+        targetID: EntityID(rawValue: "mesh"),
+        fields: [
+            SceneField.positions.rawValue: .array([.vector3(0, 0, 0), .vector3(1, 0, 0), .vector3(0, 1, 0)]),
+            SceneField.faces.rawValue: .array([.array([.number(0), .number(1), .number(3)])])
+        ],
+        requiredFeatures: [.scene3DV1, .meshV1],
+        createdAt: nil
+    )
+    #expect(!SceneFieldValidator.errors(for: malformedMesh).isEmpty)
 }
