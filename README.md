@@ -1,5 +1,13 @@
 # EditSpace Swift
 
+<a href="https://github.com/graphitedesignlabs/EditSpace">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
+    <img alt="EditSpace compatible" src="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
+  </picture>
+</a>
+
 EditSpace is a transport-neutral protocol for collaboratively creating and editing shared 3D spaces. A space is the synchronized scene—objects, transforms, geometry, materials, modifiers, assets, hierarchy, and collaborator presence. This repository contains the Swift reference implementation. The canonical, language-neutral protocol is pinned in the `Protocol` submodule.
 
 The protocol is intentionally model-agnostic:
