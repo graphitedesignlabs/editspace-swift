@@ -43,24 +43,9 @@ The language-neutral specification is the source of truth. The Swift and Python 
 
 ![EditSpace durable synchronization and ephemeral presence paths](Docs/sync-flow.png)
 
-## Protocol definition
+### Edit operation packet example
 
-Version 1 uses UTF-8 JSON. Transports may frame, compress, encrypt, authenticate, or batch JSON messages, but those choices do not change their contents. Dates are RFC 3339/ISO 8601 strings. Values are JSON null, boolean, finite number, string, array, or object. Binary data is referenced as an asset; it is not embedded in an operation.
-
-### Stable identifiers
-
-| Identifier | Lifetime | Requirement |
-| --- | --- | --- |
-| `doc` | Shared 3D space | Stable for the collaborative scene; the short wire key is retained for v1 compatibility |
-| `actor` | Author installation/account | Stable across reconnects and app launches |
-| `op` | Operation | Globally unique and immutable; `actor:seq` is recommended |
-| `target` | Entity | Stable for the entity lifetime, including after deletion |
-| `peerID` | Person/device presentation identity | Stable enough to recognize a returning collaborator |
-| `sessionID` | Live connection | New for each collaboration session |
-
-### Operation envelope
-
-The `editspace.operations` message is durable and replayable:
+A complete `editspace.operations` wire packet is durable, replayable, and may contain one or more immutable edit operations:
 
 ```json
 {
@@ -95,7 +80,22 @@ The `editspace.operations` message is durable and replayable:
 }
 ```
 
-Operation members:
+## Protocol definition
+
+Version 1 uses UTF-8 JSON. Transports may frame, compress, encrypt, authenticate, or batch JSON messages, but those choices do not change their contents. Dates are RFC 3339/ISO 8601 strings. Values are JSON null, boolean, finite number, string, array, or object. Binary data is referenced as an asset; it is not embedded in an operation.
+
+### Stable identifiers
+
+| Identifier | Lifetime | Requirement |
+| --- | --- | --- |
+| `doc` | Shared 3D space | Stable for the collaborative scene; the short wire key is retained for v1 compatibility |
+| `actor` | Author installation/account | Stable across reconnects and app launches |
+| `op` | Operation | Globally unique and immutable; `actor:seq` is recommended |
+| `target` | Entity | Stable for the entity lifetime, including after deletion |
+| `peerID` | Person/device presentation identity | Stable enough to recognize a returning collaborator |
+| `sessionID` | Live connection | New for each collaboration session |
+
+### Operation members
 
 | Member | Required | Meaning |
 | --- | --- | --- |
