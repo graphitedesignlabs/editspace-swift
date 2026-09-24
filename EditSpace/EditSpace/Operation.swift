@@ -74,6 +74,12 @@ public struct EditOperation: Codable, Equatable, Identifiable, Sendable {
         OperationStamp(sequence: sequence, actorID: actorID, operationID: operationID)
     }
 
+    /// The entity addressed by this operation, when it has a target.
+    public var targetReference: EntityReference? {
+        guard let targetID else { return nil }
+        return EntityReference(kind: entity, id: targetID)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "v", spaceID = "doc", operationID = "op", actorID = "actor"
         case sequence = "seq", dependencies = "deps", action, entity, targetID = "target"
@@ -136,6 +142,13 @@ public enum CodecError: Error, Equatable, Sendable {
 
 /// Canonical JSON codec. Object key order is stable to support hashing and fixtures.
 public enum OperationCodec {
+    public static func encode(_ operation: EditOperation) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(operation)
+    }
+
     public static func encode(_ envelope: OperationEnvelope) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -155,5 +168,23 @@ public enum OperationCodec {
             throw CodecError.spaceMismatch(expected: expectedSpaceID, actual: envelope.spaceID)
         }
         return envelope
+    }
+
+    public static func decodeOperation(from data: Data) throws -> EditOperation {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(EditOperation.self, from: data)
+    }
+
+    public static func decodeEnvelope(from data: Data, expectedSpaceID: SpaceID? = nil) throws -> OperationEnvelope {
+        try decode(data, expectedSpaceID: expectedSpaceID)
+    }
+
+    public static func compatibilityProblems(
+        for operation: EditOperation,
+        expectedSpaceID: SpaceID? = nil,
+        policy: CompatibilityPolicy = CompatibilityPolicy()
+    ) -> [CompatibilityProblem] {
+        policy.problems(for: operation, expectedSpaceID: expectedSpaceID)
     }
 }

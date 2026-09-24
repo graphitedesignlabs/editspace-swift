@@ -159,3 +159,77 @@ private func operation(
     )
     #expect(!SceneFieldValidator.errors(for: malformedMesh).isEmpty)
 }
+
+@Test func unsupportedOperationsArePreservedWithoutBeingMaterialized() {
+    let unsupported = operation(
+        actor: "a",
+        sequence: 1,
+        action: OperationAction(rawValue: "futureAction")
+    )
+    var log = OperationLog(spaceID: spaceID)
+
+    guard case .storedWithCompatibilityProblems(let problems) = log.append(unsupported) else {
+        Issue.record("Expected an unsupported operation to be preserved")
+        return
+    }
+
+    #expect(problems.contains { $0.kind == .unsupportedAction })
+    #expect(log.operations == [unsupported])
+
+    let state = log.materialize()
+    #expect(state.unappliedOperations == [unsupported])
+    #expect(state.visibleEntities.isEmpty)
+}
+
+@Test func replicaBindingsProjectOnlyResolvedChanges() {
+    let create = operation(
+        actor: "a",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Cube"), "x": .number(0)]
+    )
+    let newestUpdate = operation(
+        actor: "a",
+        sequence: 3,
+        action: .update,
+        fields: ["x": .number(3)]
+    )
+    let staleUpdate = operation(
+        actor: "b",
+        sequence: 2,
+        action: .update,
+        fields: ["x": .number(2)]
+    )
+    var events: [String] = []
+    var projectedFields: [EntityReference: [String: Value]] = [:]
+    let bindings = ReplicaBindings(
+        create: { reference, _, fields, _ in
+            projectedFields[reference] = fields
+            events.append("create:\(reference)")
+        },
+        update: { reference, fields, _ in
+            projectedFields[reference, default: [:]].merge(fields) { _, newValue in newValue }
+            events.append("update:\(reference)")
+        },
+        delete: { reference in
+            projectedFields.removeValue(forKey: reference)
+            events.append("delete:\(reference)")
+        },
+        setLink: { reference, linkedReference, isLinked in
+            events.append("link:\(reference):\(linkedReference):\(isLinked)")
+        }
+    )
+    let replica = Replica(spaceID: spaceID, bindings: bindings)
+
+    let initialReport = replica.apply([create, newestUpdate])
+    #expect(initialReport.failures.isEmpty)
+    #expect(events.count == 2)
+
+    events.removeAll()
+    let staleReport = replica.apply([staleUpdate])
+    #expect(staleReport.failures.isEmpty)
+    #expect(events.isEmpty)
+
+    let reference = EntityReference(kind: .object, id: objectID)
+    #expect(projectedFields[reference]?["x"] == .number(3))
+}

@@ -47,15 +47,30 @@ public struct CompatibilityPolicy: Sendable {
 
     public init(
         supportedSchemaVersion: Int = EditOperation.currentSchemaVersion,
-        supportedActions: Set<OperationAction> = [.create, .update, .delete, .duplicate, .link, .unlink],
-        supportedEntities: Set<EntityKind> = [.space, .document, .object, .mesh, .vertex, .face, .modifier, .material, .asset, .constraint, .parameter, .dependency, .legacySnapshot],
-        supportedFeatures: Set<Feature> = [.coreV1, .scene3DV1, .meshV1, .modifiersV1, .pbrMaterialV1, .crudV1, .duplicateV1, .linkedDuplicateV1, .dependencyGraphV1, .presenceV1]
+        supportedActions: Set<OperationAction> = CompatibilityPolicy.defaultSupportedActions,
+        supportedEntities: Set<EntityKind> = CompatibilityPolicy.defaultSupportedEntities,
+        supportedFeatures: Set<Feature> = CompatibilityPolicy.defaultSupportedFeatures
     ) {
         self.supportedSchemaVersion = supportedSchemaVersion
         self.supportedActions = supportedActions
         self.supportedEntities = supportedEntities
         self.supportedFeatures = supportedFeatures
     }
+
+    public static let defaultSupportedActions: Set<OperationAction> = [
+        .create, .update, .delete, .duplicate, .link, .unlink
+    ]
+
+    public static let defaultSupportedEntities: Set<EntityKind> = [
+        .space, .document, .object, .mesh, .vertex, .face, .modifier,
+        .material, .asset, .constraint, .parameter, .dependency, .legacySnapshot
+    ]
+
+    public static let defaultSupportedFeatures: Set<Feature> = [
+        .coreV1, .scene3DV1, .meshV1, .modifiersV1, .pbrMaterialV1,
+        .crudV1, .duplicateV1, .linkedDuplicateV1, .dependencyGraphV1,
+        .presenceV1, .legacySnapshotV1
+    ]
 
     public func problems(for operation: EditOperation, expectedSpaceID: SpaceID? = nil) -> [CompatibilityProblem] {
         var result: [CompatibilityProblem] = []

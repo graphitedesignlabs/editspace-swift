@@ -53,6 +53,17 @@ public enum Value: Codable, Equatable, Sendable, CustomStringConvertible {
     public var arrayValue: [Value]? { if case .array(let value) = self { value } else { nil } }
     public var objectValue: [String: Value]? { if case .object(let value) = self { value } else { nil } }
 
+    /// Creates an array of protocol numbers without imposing a vector length.
+    public static func vector(_ values: [Double]) -> Self {
+        .array(values.map(Self.number))
+    }
+
+    /// Creates a numeric matrix payload. Shape validation is performed by the
+    /// field-specific compatibility policy.
+    public static func matrix(_ values: [Double]) -> Self {
+        .array(values.map(Self.number))
+    }
+
     /// A protocol vec2 `[x, y]`.
     public static func vector2(_ x: Double, _ y: Double) -> Self { .array([.number(x), .number(y)]) }
 

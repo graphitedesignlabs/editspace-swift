@@ -101,6 +101,7 @@ public extension Feature {
     static let linkedDuplicateV1: Self = "linkedDuplicate.v1"
     static let dependencyGraphV1: Self = "dependencyGraph.v1"
     static let presenceV1: Self = "presence.v1"
+    static let legacySnapshotV1: Self = "legacySnapshot.v1"
 }
 
 /// An extensible field name from the EditSpace shared 3D scene vocabulary.

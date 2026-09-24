@@ -1,75 +1,111 @@
 import Foundation
 
 public enum AppendResult: Equatable, Sendable {
-    case accepted
+    case appended
     case duplicate
+    case storedWithCompatibilityProblems([CompatibilityProblem])
     case rejected([CompatibilityProblem])
 }
 
-/// An immutable, idempotent operation set. Unsupported operations remain preserved.
+public extension AppendResult {
+    /// The v0.1 spelling retained for source compatibility.
+    static var accepted: Self { .appended }
+}
+
 public struct OperationLog: Sendable {
     public let spaceID: SpaceID
     public let compatibilityPolicy: CompatibilityPolicy
-    public private(set) var operationsByID: [OperationID: EditOperation] = [:]
-    public private(set) var rejectedOperationsByID: [OperationID: EditOperation] = [:]
-    public private(set) var problems: [CompatibilityProblem] = []
+    public private(set) var operationsByID: [OperationID: EditOperation]
 
-    public init(spaceID: SpaceID, compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
+    public init(spaceID: SpaceID,
+                operations: [EditOperation] = [],
+                compatibilityPolicy: CompatibilityPolicy = CompatibilityPolicy()) {
         self.spaceID = spaceID
         self.compatibilityPolicy = compatibilityPolicy
+        self.operationsByID = [:]
+        for operation in operations {
+            _ = append(operation)
+        }
+    }
+
+    public var operations: [EditOperation] {
+        Materializer.orderedOperations(Array(operationsByID.values))
+    }
+
+    public var count: Int {
+        operationsByID.count
     }
 
     @discardableResult
     public mutating func append(_ operation: EditOperation) -> AppendResult {
-        if let existing = operationsByID[operation.operationID] ?? rejectedOperationsByID[operation.operationID] {
-            guard existing == operation else {
-                let collision = CompatibilityProblem(
-                    kind: .operationIDCollision,
-                    operationID: operation.operationID,
-                    producer: operation.producer,
-                    message: "Operation ID has different immutable content"
+        if let existing = operationsByID[operation.operationID] {
+            guard existing != operation else {
+                EditSpaceInstrumentation.log(
+                    "append.duplicate",
+                    keywords: ["op-log"],
+                    "space=\(spaceID.rawValue) op=\(operation.operationID.rawValue) actor=\(operation.actorID.rawValue) seq=\(operation.sequence)"
                 )
-                problems.append(collision)
-                return .rejected([collision])
+                return .duplicate
             }
-            return .duplicate
+
+            let collision = CompatibilityProblem(
+                kind: .operationIDCollision,
+                operationID: operation.operationID,
+                producer: operation.producer,
+                message: "Operation ID is already associated with different immutable content"
+            )
+            EditSpaceInstrumentation.log(
+                "append.rejected",
+                keywords: ["op-log", "compat"],
+                "space=\(spaceID.rawValue) op=\(operation.operationID.rawValue) problems=\(collision.description)",
+                level: .error
+            )
+            return .rejected([collision])
         }
 
-        let operationProblems = compatibilityPolicy.problems(for: operation, expectedSpaceID: spaceID)
-        guard operationProblems.isEmpty else {
-            rejectedOperationsByID[operation.operationID] = operation
-            problems.append(contentsOf: operationProblems)
-            return .rejected(operationProblems)
+        let problems = compatibilityPolicy.problems(for: operation, expectedSpaceID: spaceID)
+        let rejectionKinds: Set<CompatibilityProblemKind> = [
+            .spaceMismatch,
+            .invalidOperation,
+            .operationIDCollision
+        ]
+        if problems.contains(where: { rejectionKinds.contains($0.kind) }) {
+            EditSpaceInstrumentation.log(
+                "append.rejected",
+                keywords: ["op-log", "compat"],
+                "space=\(spaceID.rawValue) op=\(operation.operationID.rawValue) problems=\(problems.map(\.description).joined(separator: " | "))",
+                level: .error
+            )
+            return .rejected(problems)
         }
+
         operationsByID[operation.operationID] = operation
-        return .accepted
-    }
 
-    public var operations: [EditOperation] {
-        Self.causallyOrdered(Array(operationsByID.values))
-    }
-
-    /// Deterministic topological ordering; missing or cyclic dependencies fall back to stamp order.
-    public static func causallyOrdered(_ operations: [EditOperation]) -> [EditOperation] {
-        let byID = Dictionary(uniqueKeysWithValues: operations.map { ($0.operationID, $0) })
-        var remaining = Set(byID.keys)
-        var emitted = Set<OperationID>()
-        var output: [EditOperation] = []
-
-        while !remaining.isEmpty {
-            let ready = remaining.compactMap { byID[$0] }.filter { operation in
-                operation.dependencies.allSatisfy { byID[$0] == nil || emitted.contains($0) }
-            }.sorted { $0.stamp < $1.stamp }
-            guard !ready.isEmpty else {
-                output.append(contentsOf: remaining.compactMap { byID[$0] }.sorted { $0.stamp < $1.stamp })
-                break
-            }
-            for operation in ready {
-                output.append(operation)
-                emitted.insert(operation.operationID)
-                remaining.remove(operation.operationID)
-            }
+        if problems.isEmpty {
+            EditSpaceInstrumentation.log(
+                "append.success",
+                keywords: ["op-log"],
+                "space=\(spaceID.rawValue) op=\(operation.operationID.rawValue) actor=\(operation.actorID.rawValue) seq=\(operation.sequence) action=\(operation.action.rawValue) entity=\(operation.entity.rawValue) target=\(operation.targetID?.rawValue ?? "nil") count=\(operationsByID.count)"
+            )
+            return .appended
+        } else {
+            EditSpaceInstrumentation.log(
+                "append.compatibilityStored",
+                keywords: ["op-log", "compat", "schema"],
+                "space=\(spaceID.rawValue) op=\(operation.operationID.rawValue) problems=\(problems.map(\.description).joined(separator: " | ")) count=\(operationsByID.count)",
+                level: .warning
+            )
+            return .storedWithCompatibilityProblems(problems)
         }
-        return output
+    }
+
+    @discardableResult
+    public mutating func append(contentsOf operations: [EditOperation]) -> [AppendResult] {
+        operations.map { append($0) }
+    }
+
+    public func materialize() -> SpaceState {
+        Materializer(compatibilityPolicy: compatibilityPolicy)
+            .materialize(spaceID: spaceID, operations: operations)
     }
 }
