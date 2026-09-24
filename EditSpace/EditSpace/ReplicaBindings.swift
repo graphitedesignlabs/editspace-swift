@@ -222,8 +222,9 @@ public extension Materializer {
         using bindings: ReplicaBindings
     ) -> ReplicaApplicationReport {
         var failures: [ReplicaApplicationFailure] = []
-        for reference in state.visibleEntities.keys.sorted() {
-            guard let entity = state.visibleEntities[reference] else { continue }
+        let entities = replayOrderedEntities(in: state)
+        for entity in entities {
+            let reference = entity.reference
             let context = ReplicaMutationContext(
                 operation: nil,
                 reference: reference,
@@ -234,6 +235,20 @@ public extension Materializer {
             perform(reference: reference, operationID: nil, failures: &failures) {
                 try bindings.create(context)
             }
+        }
+
+        // Links are projected only after every entity has had a construction
+        // opportunity. This avoids requiring applications to buffer links whose
+        // source entity sorts after their target.
+        for entity in entities {
+            let reference = entity.reference
+            let context = ReplicaMutationContext(
+                operation: nil,
+                reference: reference,
+                sourceID: entity.sourceID,
+                fields: entity.fields,
+                arguments: entity.arguments
+            )
             for linkedReference in entity.links.sorted() {
                 perform(reference: reference, operationID: nil, failures: &failures) {
                     try bindings.setLink(context, linkedReference, true)
@@ -241,6 +256,35 @@ public extension Materializer {
             }
         }
         return ReplicaApplicationReport(failures: failures)
+    }
+
+    private func replayOrderedEntities(in state: SpaceState) -> [EntityState] {
+        let visibleEntities = state.visibleEntities
+        var ordered: [EntityState] = []
+        var emitted: Set<EntityReference> = []
+        var visiting: Set<EntityReference> = []
+
+        func append(_ reference: EntityReference) {
+            guard !emitted.contains(reference),
+                  let entity = visibleEntities[reference] else { return }
+            guard visiting.insert(reference).inserted else { return }
+
+            if let sourceID = entity.sourceID {
+                let sourceKind = entity.arguments["sourceEntity"]?.stringValue
+                    .map(EntityKind.init(rawValue:)) ?? entity.reference.kind
+                let sourceReference = EntityReference(kind: sourceKind, id: sourceID)
+                append(sourceReference)
+            }
+
+            visiting.remove(reference)
+            guard emitted.insert(reference).inserted else { return }
+            ordered.append(entity)
+        }
+
+        for reference in visibleEntities.keys.sorted() {
+            append(reference)
+        }
+        return ordered
     }
 
     private func emitChanges(

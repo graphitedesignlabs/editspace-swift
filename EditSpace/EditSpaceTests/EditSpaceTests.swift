@@ -270,3 +270,66 @@ private func operation(
     #expect(contexts.last?.fields["x"] == .number(2))
     #expect(changedFields == [["x": .number(2)]])
 }
+
+@Test func replicaReplayCreatesSourcesBeforeDependantsAndLinksLast() {
+    let createObject = operation(
+        actor: "a",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Cube")]
+    )
+    let modifierID = EntityID(rawValue: "modifier")
+    let createModifier = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 2,
+        dependencies: [createObject.operationID],
+        action: .create,
+        entity: .modifier,
+        targetID: modifierID,
+        sourceID: objectID,
+        fields: ["kind": .string("box")],
+        arguments: ["sourceEntity": .string(EntityKind.object.rawValue)],
+        createdAt: nil
+    )
+    let linkModifier = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 3,
+        dependencies: [createModifier.operationID],
+        action: .link,
+        entity: .object,
+        targetID: objectID,
+        sourceID: modifierID,
+        arguments: ["sourceEntity": .string(EntityKind.modifier.rawValue)],
+        createdAt: nil
+    )
+    let inertBindings = ReplicaBindings(
+        create: { (_: ReplicaMutationContext) in },
+        update: { (_: ReplicaMutationContext, _: [String: Value], _: [String: Value]) in },
+        delete: { (_: ReplicaMutationContext) in },
+        setLink: { (_: ReplicaMutationContext, _: EntityReference, _: Bool) in }
+    )
+    let replica = Replica(spaceID: spaceID, bindings: inertBindings)
+    _ = replica.apply([createObject, createModifier, linkModifier])
+
+    var createdReferences: [EntityReference] = []
+    var linkSawEveryEntity = false
+    let report = replica.attach(ReplicaBindings(
+        create: { context in
+            createdReferences.append(context.reference)
+        },
+        update: { _, _, _ in },
+        delete: { _ in },
+        setLink: { _, _, _ in
+            linkSawEveryEntity = createdReferences.count == 2
+        }
+    ))
+
+    #expect(report.failures.isEmpty)
+    #expect(createdReferences == [
+        EntityReference(kind: .object, id: objectID),
+        EntityReference(kind: .modifier, id: modifierID)
+    ])
+    #expect(linkSawEveryEntity)
+}
