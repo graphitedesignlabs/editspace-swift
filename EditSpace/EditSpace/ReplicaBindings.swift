@@ -11,6 +11,9 @@ public struct ReplicaMutationContext: Sendable {
     public let reference: EntityReference
     public let sourceID: EntityID?
     public let fields: [String: Value]
+    /// The winning operation stamp for each value in ``fields``.
+    /// Use this to reconcile overlapping application-level representations.
+    public let fieldStamps: [String: OperationStamp]
     public let arguments: [String: Value]
 
     public init(
@@ -18,12 +21,14 @@ public struct ReplicaMutationContext: Sendable {
         reference: EntityReference,
         sourceID: EntityID?,
         fields: [String: Value],
+        fieldStamps: [String: OperationStamp] = [:],
         arguments: [String: Value]
     ) {
         self.operation = operation
         self.reference = reference
         self.sourceID = sourceID
         self.fields = fields
+        self.fieldStamps = fieldStamps
         self.arguments = arguments
     }
 
@@ -230,6 +235,7 @@ public extension Materializer {
                 reference: reference,
                 sourceID: entity.sourceID,
                 fields: entity.fields,
+                fieldStamps: entity.fieldRegisters.mapValues(\.stamp),
                 arguments: entity.arguments
             )
             perform(reference: reference, operationID: nil, failures: &failures) {
@@ -247,6 +253,7 @@ public extension Materializer {
                 reference: reference,
                 sourceID: entity.sourceID,
                 fields: entity.fields,
+                fieldStamps: entity.fieldRegisters.mapValues(\.stamp),
                 arguments: entity.arguments
             )
             for linkedReference in entity.links.sorted() {
@@ -352,6 +359,7 @@ public extension Materializer {
             reference: entity.reference,
             sourceID: entity.sourceID,
             fields: entity.fields,
+            fieldStamps: entity.fieldRegisters.mapValues(\.stamp),
             arguments: entity.arguments
         )
     }

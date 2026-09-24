@@ -268,7 +268,17 @@ private func operation(
     #expect(contexts.map(\.operationID) == [create.operationID, update.operationID])
     #expect(contexts.last?.fields["name"] == .string("Cube"))
     #expect(contexts.last?.fields["x"] == .number(2))
+    #expect(contexts.last?.fieldStamps["name"] == create.stamp)
+    #expect(contexts.last?.fieldStamps["x"] == update.stamp)
     #expect(changedFields == [["x": .number(2)]])
+
+    contexts.removeAll()
+    let replayReport = replica.replay()
+    #expect(replayReport.failures.isEmpty)
+    #expect(contexts.count == 1)
+    #expect(contexts.last?.operation == nil)
+    #expect(contexts.last?.fieldStamps["name"] == create.stamp)
+    #expect(contexts.last?.fieldStamps["x"] == update.stamp)
 }
 
 @Test func replicaReplayCreatesSourcesBeforeDependantsAndLinksLast() {
