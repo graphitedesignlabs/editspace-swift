@@ -4,9 +4,11 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
-    <img alt="EditSpace compatible" src="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
+    <img alt="EditSpace-compatible SDK" src="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
   </picture>
 </a>
+
+`editspace-swift` is a compatible SDK. Applications should use the separate EditSpace Tool badge only when they implement EditTool; see the [badge guidance](https://github.com/graphitedesignlabs/EditSpace#badges).
 
 This repository is the Swift reference implementation and maintained source of truth for protocol evolution. Language-neutral changes are periodically back-applied to the [EditSpace protocol repository](https://github.com/graphitedesignlabs/EditSpace), which is pinned here in the `Protocol` submodule.
 
