@@ -343,3 +343,51 @@ private func operation(
     ])
     #expect(linkSawEveryEntity)
 }
+
+@Test func spaceMergeRegistryConvergesAcrossOrderAndRepeatedDelivery() throws {
+    let a = SpaceID(rawValue: "a")
+    let b = SpaceID(rawValue: "b")
+    let c = SpaceID(rawValue: "c")
+    let ab = SpaceMergeDeclaration(a, b)
+    let bc = SpaceMergeDeclaration(b, c)
+
+    var first = SpaceMergeRegistry()
+    first.apply([ab, bc, ab])
+    var second = SpaceMergeRegistry()
+    second.apply([bc, ab])
+
+    #expect(first == second)
+    #expect(first.canonicalSpaceID(for: c) == a)
+    #expect(first.equivalentSpaceIDs(to: b) == [a, b, c])
+    #expect(first.areEquivalent(a, c))
+
+    let data = try SpaceMergeCodec.encode(
+        SpaceMergeEnvelope(declarations: Array(first.declarations))
+    )
+    let wire = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(wire["kind"] as? String == "editspace.space-merges")
+    #expect(wire["v"] as? Int == 1)
+    let wireDeclarations = try #require(wire["declarations"] as? [[String: String]])
+    #expect(wireDeclarations.allSatisfy { $0["first"] != nil && $0["second"] != nil })
+    let decoded = try SpaceMergeCodec.decode(data)
+    var reconnected = SpaceMergeRegistry()
+    reconnected.apply(decoded.declarations)
+    #expect(reconnected == first)
+}
+
+@Test func resolvingOperationSpacePreservesIdentityAndStamp() {
+    let original = operation(
+        actor: "device-b",
+        sequence: 42,
+        action: .update,
+        fields: ["x": .number(3)]
+    )
+    let canonical = SpaceID(rawValue: "canonical")
+    let resolved = original.resolvingSpace(to: canonical)
+
+    #expect(resolved.spaceID == canonical)
+    #expect(resolved.operationID == original.operationID)
+    #expect(resolved.stamp == original.stamp)
+    #expect(resolved.dependencies == original.dependencies)
+    #expect(resolved.fields == original.fields)
+}

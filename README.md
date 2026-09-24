@@ -2,9 +2,9 @@
 
 <a href="https://github.com/graphitedesignlabs/EditSpace">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
-    <img alt="EditSpace compatible" src="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible-light.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatibledark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible.png">
+    <img alt="EditSpace compatible" src="https://raw.githubusercontent.com/graphitedesignlabs/EditSpace/main/editspacecompatible.png">
   </picture>
 </a>
 
@@ -103,7 +103,7 @@ Version 1 uses UTF-8 JSON. Transports may frame, compress, encrypt, authenticate
 | `doc` | Yes | Shared-space ID; must match the envelope |
 | `op` | Yes | Immutable operation ID |
 | `actor` | Yes | Author ID |
-| `seq` | Yes | Author-local monotonic sequence used in deterministic ordering |
+| `seq` | Yes | Author-local monotonic sequence, allocated across all spaces, used in deterministic ordering |
 | `deps` | No | Causal predecessor operation IDs; defaults to `[]` |
 | `action` | Yes | Extensible action token |
 | `entity` | Yes | Extensible entity-kind token |
@@ -117,7 +117,11 @@ Version 1 uses UTF-8 JSON. Transports may frame, compress, encrypt, authenticate
 
 Core actions are `create`, `update`, `delete`, `duplicate`, `link`, and `unlink`. Core scene entities are `space`, `object`, `mesh`, `vertex`, `face`, `modifier`, `material`, `asset`, `constraint`, `parameter`, `dependency`, and `legacySnapshot`. `document` is accepted only as an early-v1 compatibility token.
 
-The protocol defines concrete 3D fields rather than leaving `fields` opaque: right-handed Y-up meter coordinates; vec2/vec3/vec4 and column-major matrix encodings; object transforms and hierarchy; bulk meshes and stable vertex/face entities; modifier inputs; metallic/roughness PBR materials; and hashed assets. See [the normative shared-scene model](Protocol/SPECIFICATION.md#34-shared-3d-scene-model).
+The protocol defines concrete 3D fields rather than leaving `fields` opaque: right-handed Y-up meter coordinates; vec2/vec3/vec4 and column-major matrix encodings; object transforms and hierarchy; bulk meshes and stable vertex/face entities; modifier inputs; metallic/roughness PBR materials; and hashed assets. See [the normative shared-scene model](Protocol/SPECIFICATION.md#35-shared-3d-scene-model).
+
+### Space merging
+
+`SpaceMergeDeclaration` records that two space IDs name one logical collaboration space. `SpaceMergeRegistry` applies declarations idempotently, resolves transitive components, and chooses the lexicographically smallest member as the canonical ID. Peers can replay `SpaceMergeEnvelope` values in any order and reach the same result, including after reconnecting. `EditOperation.resolvingSpace(to:)` supports adapters whose per-space logs require canonical routing while preserving operation identity and ordering stamps.
 
 ### Deterministic merge
 
