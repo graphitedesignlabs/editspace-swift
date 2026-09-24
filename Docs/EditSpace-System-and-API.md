@@ -26,7 +26,7 @@ The design separates durable scene edits from ephemeral human presence. An endpo
 
 # Components
 
-The specification defines the common wire contract and convergence rules. The Swift and Python libraries descend independently from that specification and exchange the same messages. GraphiteKit imports EditSpace Swift, and Graphite 3D uses GraphiteKit as its modelling and collaboration library. The Blender plug-in imports EditSpace Python and is hosted by Blender. Graphite 3D users and Blender users interact with their respective applications rather than with the protocol libraries directly. Within either language library, the endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `SpaceState`. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
+The specification defines the common wire contract and convergence rules. The Swift and Python libraries descend independently from that specification and exchange the same messages. GraphiteKit imports EditSpace Swift, and Graphite 3D uses GraphiteKit as its modelling and collaboration library. The Blender plug-in imports EditSpace Python and is hosted by Blender. Graphite 3D users and Blender users interact with their respective applications rather than with the protocol libraries directly. Within either language library, the endpoint adapter converts native actions and values into EditSpace operations. `OperationLog` validates, deduplicates, and preserves them. `Materializer` deterministically reduces the log into `SpaceState`. `Replica` keeps that state private and projects winning mutations through application-owned functions. `SyncEngine` manages peer and durable-store queues while leaving networking and storage to adapter protocols.
 
 ![EditSpace synchronization paths](sync-flow.png)
 
@@ -74,6 +74,15 @@ Receivers retain the greatest sequence per session and remove expired or offline
 - `FieldRegister`, `EntityState`, `SpaceState`: materialized CRDT data.
 - `Materializer`: deterministic log reduction.
 
+## Application projection
+
+- `Replica`: owns the private materialized convergence index for one space.
+- `ReplicaBindings`: application-supplied create, update, delete, and link functions.
+- `ReplicaMutationContext`: originating operation plus the entity's complete resolved fields and arguments.
+- `ReplicaApplicationReport`: applied operation IDs and projection failures.
+
+Applications can rebuild their renderer or model by attaching new bindings and calling `replay()`. This keeps `SpaceState` available for diagnostics and conformance without making it a second application-state contract.
+
 ## Synchronization
 
 - `SyncEngine`: imports operations and routes accepted IDs to peer/store queues.
@@ -102,9 +111,18 @@ let operation = EditOperation(
     fields: ["name": .string("Cube")]
 )
 
-var engine = SyncEngine(spaceID: spaceID)
-engine.append([operation], source: .local)
-let state = engine.state
+let replica = Replica(
+    spaceID: spaceID,
+    bindings: ReplicaBindings(
+        create: { context in appScene.create(context.reference, fields: context.fields) },
+        update: { context, fields, _ in appScene.update(context.reference, fields: fields) },
+        delete: { context in appScene.delete(context.reference) },
+        setLink: { context, linked, isLinked in
+            appScene.setLink(from: context.reference, to: linked, isLinked: isLinked)
+        }
+    )
+)
+replica.apply([operation])
 ```
 
 # Blender/Python implementation checklist

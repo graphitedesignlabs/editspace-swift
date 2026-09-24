@@ -1,29 +1,76 @@
 import Foundation
 
+/// The resolved entity projection associated with an application mutation.
+///
+/// `operation` identifies the edit that caused an incremental mutation. It is
+/// `nil` when a replica is replaying its current state into newly attached
+/// bindings. `fields` and `arguments` always contain the complete winning
+/// values for the entity, so applications never need to retain `SpaceState`.
+public struct ReplicaMutationContext: Sendable {
+    public let operation: EditOperation?
+    public let reference: EntityReference
+    public let sourceID: EntityID?
+    public let fields: [String: Value]
+    public let arguments: [String: Value]
+
+    public init(
+        operation: EditOperation?,
+        reference: EntityReference,
+        sourceID: EntityID?,
+        fields: [String: Value],
+        arguments: [String: Value]
+    ) {
+        self.operation = operation
+        self.reference = reference
+        self.sourceID = sourceID
+        self.fields = fields
+        self.arguments = arguments
+    }
+
+    public var operationID: OperationID? { operation?.operationID }
+}
+
 /// Application-owned construction and mutation functions used to project a
 /// resolved EditSpace replica directly into an app model or renderer.
 ///
 /// The merge engine retains only the bookkeeping required for convergence.
 /// It does not require the application to consume or copy a ``SpaceState``.
 public struct ReplicaBindings {
-    public var create: (
-        _ reference: EntityReference,
-        _ sourceID: EntityID?,
-        _ fields: [String: Value],
-        _ arguments: [String: Value]
-    ) throws -> Void
+    public var create: (_ context: ReplicaMutationContext) throws -> Void
     public var update: (
-        _ reference: EntityReference,
+        _ context: ReplicaMutationContext,
         _ changedFields: [String: Value],
         _ changedArguments: [String: Value]
     ) throws -> Void
-    public var delete: (_ reference: EntityReference) throws -> Void
+    public var delete: (_ context: ReplicaMutationContext) throws -> Void
     public var setLink: (
-        _ reference: EntityReference,
+        _ context: ReplicaMutationContext,
         _ linkedReference: EntityReference,
         _ isLinked: Bool
     ) throws -> Void
 
+    public init(
+        create: @escaping (_ context: ReplicaMutationContext) throws -> Void,
+        update: @escaping (
+            _ context: ReplicaMutationContext,
+            _ changedFields: [String: Value],
+            _ changedArguments: [String: Value]
+        ) throws -> Void,
+        delete: @escaping (_ context: ReplicaMutationContext) throws -> Void,
+        setLink: @escaping (
+            _ context: ReplicaMutationContext,
+            _ linkedReference: EntityReference,
+            _ isLinked: Bool
+        ) throws -> Void
+    ) {
+        self.create = create
+        self.update = update
+        self.delete = delete
+        self.setLink = setLink
+    }
+
+    /// Source-compatible convenience for applications that do not need the
+    /// originating operation or complete resolved entity projection.
     public init(
         create: @escaping (
             _ reference: EntityReference,
@@ -43,10 +90,20 @@ public struct ReplicaBindings {
             _ isLinked: Bool
         ) throws -> Void
     ) {
-        self.create = create
-        self.update = update
-        self.delete = delete
-        self.setLink = setLink
+        self.init(
+            create: { context in
+                try create(context.reference, context.sourceID, context.fields, context.arguments)
+            },
+            update: { context, changedFields, changedArguments in
+                try update(context.reference, changedFields, changedArguments)
+            },
+            delete: { context in
+                try delete(context.reference)
+            },
+            setLink: { context, linkedReference, isLinked in
+                try setLink(context.reference, linkedReference, isLinked)
+            }
+        )
     }
 }
 
@@ -146,7 +203,7 @@ public extension Materializer {
             emitChanges(
                 from: before,
                 to: after,
-                operationID: operation.operationID,
+                operation: operation,
                 using: bindings,
                 failures: &failures
             )
@@ -167,17 +224,19 @@ public extension Materializer {
         var failures: [ReplicaApplicationFailure] = []
         for reference in state.visibleEntities.keys.sorted() {
             guard let entity = state.visibleEntities[reference] else { continue }
+            let context = ReplicaMutationContext(
+                operation: nil,
+                reference: reference,
+                sourceID: entity.sourceID,
+                fields: entity.fields,
+                arguments: entity.arguments
+            )
             perform(reference: reference, operationID: nil, failures: &failures) {
-                try bindings.create(
-                    reference,
-                    entity.sourceID,
-                    entity.fields,
-                    entity.arguments
-                )
+                try bindings.create(context)
             }
             for linkedReference in entity.links.sorted() {
                 perform(reference: reference, operationID: nil, failures: &failures) {
-                    try bindings.setLink(reference, linkedReference, true)
+                    try bindings.setLink(context, linkedReference, true)
                 }
             }
         }
@@ -187,7 +246,7 @@ public extension Materializer {
     private func emitChanges(
         from before: [EntityReference: EntityState],
         to after: [EntityReference: EntityState],
-        operationID: OperationID,
+        operation: EditOperation,
         using bindings: ReplicaBindings,
         failures: inout [ReplicaApplicationFailure]
     ) {
@@ -195,44 +254,42 @@ public extension Materializer {
         for reference in references {
             switch (before[reference], after[reference]) {
             case (nil, let entity?):
-                perform(reference: reference, operationID: operationID, failures: &failures) {
-                    try bindings.create(
-                        reference,
-                        entity.sourceID,
-                        entity.fields,
-                        entity.arguments
-                    )
+                let context = mutationContext(operation: operation, entity: entity)
+                perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    try bindings.create(context)
                 }
                 for linkedReference in entity.links.sorted() {
-                    perform(reference: reference, operationID: operationID, failures: &failures) {
-                        try bindings.setLink(reference, linkedReference, true)
+                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                        try bindings.setLink(context, linkedReference, true)
                     }
                 }
 
-            case (.some, nil):
-                perform(reference: reference, operationID: operationID, failures: &failures) {
-                    try bindings.delete(reference)
+            case (let previous?, nil):
+                let context = mutationContext(operation: operation, entity: previous)
+                perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    try bindings.delete(context)
                 }
 
             case (let previous?, let current?):
+                let context = mutationContext(operation: operation, entity: current)
                 let changedFields = current.fields.filter { previous.fields[$0.key] != $0.value }
                 let changedArguments = current.arguments.filter {
                     previous.arguments[$0.key] != $0.value
                 }
                 if !changedFields.isEmpty || !changedArguments.isEmpty {
-                    perform(reference: reference, operationID: operationID, failures: &failures) {
-                        try bindings.update(reference, changedFields, changedArguments)
+                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                        try bindings.update(context, changedFields, changedArguments)
                     }
                 }
 
                 for linkedReference in current.links.subtracting(previous.links).sorted() {
-                    perform(reference: reference, operationID: operationID, failures: &failures) {
-                        try bindings.setLink(reference, linkedReference, true)
+                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                        try bindings.setLink(context, linkedReference, true)
                     }
                 }
                 for linkedReference in previous.links.subtracting(current.links).sorted() {
-                    perform(reference: reference, operationID: operationID, failures: &failures) {
-                        try bindings.setLink(reference, linkedReference, false)
+                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                        try bindings.setLink(context, linkedReference, false)
                     }
                 }
 
@@ -240,6 +297,19 @@ public extension Materializer {
                 break
             }
         }
+    }
+
+    private func mutationContext(
+        operation: EditOperation,
+        entity: EntityState
+    ) -> ReplicaMutationContext {
+        ReplicaMutationContext(
+            operation: operation,
+            reference: entity.reference,
+            sourceID: entity.sourceID,
+            fields: entity.fields,
+            arguments: entity.arguments
+        )
     }
 
     private func perform(

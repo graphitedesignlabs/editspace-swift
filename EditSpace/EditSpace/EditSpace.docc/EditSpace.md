@@ -20,10 +20,24 @@ let operation = EditOperation(
     fields: ["name": .string("Cube")]
 )
 
-var engine = SyncEngine(spaceID: spaceID)
-engine.append([operation], source: .local)
-let state = engine.state
+var projectedFields: [EntityReference: [String: Value]] = [:]
+let bindings = ReplicaBindings(
+    create: { context in
+        projectedFields[context.reference] = context.fields
+    },
+    update: { context, changedFields, _ in
+        projectedFields[context.reference, default: [:]].merge(changedFields) { _, new in new }
+    },
+    delete: { context in
+        projectedFields.removeValue(forKey: context.reference)
+    },
+    setLink: { _, _, _ in }
+)
+let replica = Replica(spaceID: spaceID, bindings: bindings)
+replica.apply([operation])
 ```
+
+``Replica`` privately owns convergence bookkeeping and projects only winning changes through application-supplied functions. ``ReplicaMutationContext`` supplies the originating operation and complete resolved entity values without requiring the application to retain ``SpaceState``.
 
 ## Topics
 
@@ -35,6 +49,14 @@ let state = engine.state
 - ``OperationLog``
 - ``Materializer``
 - ``SpaceState``
+
+### Application projection
+
+- ``Replica``
+- ``ReplicaBindings``
+- ``ReplicaMutationContext``
+- ``ReplicaApplicationReport``
+- ``ReplicaApplicationFailure``
 
 ### Synchronization and compatibility
 

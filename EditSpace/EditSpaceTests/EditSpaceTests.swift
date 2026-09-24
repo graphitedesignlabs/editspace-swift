@@ -233,3 +233,40 @@ private func operation(
     let reference = EntityReference(kind: .object, id: objectID)
     #expect(projectedFields[reference]?["x"] == .number(3))
 }
+
+@Test func replicaMutationContextIncludesOriginAndResolvedEntity() {
+    let create = operation(
+        actor: "a",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Cube"), "x": .number(0)]
+    )
+    let update = operation(
+        actor: "b",
+        sequence: 2,
+        action: .update,
+        fields: ["x": .number(2)]
+    )
+    var contexts: [ReplicaMutationContext] = []
+    var changedFields: [[String: Value]] = []
+    let bindings = ReplicaBindings(
+        create: { context in
+            contexts.append(context)
+        },
+        update: { context, fields, _ in
+            contexts.append(context)
+            changedFields.append(fields)
+        },
+        delete: { _ in },
+        setLink: { _, _, _ in }
+    )
+    let replica = Replica(spaceID: spaceID, bindings: bindings)
+
+    let report = replica.apply([create, update])
+
+    #expect(report.failures.isEmpty)
+    #expect(contexts.map(\.operationID) == [create.operationID, update.operationID])
+    #expect(contexts.last?.fields["name"] == .string("Cube"))
+    #expect(contexts.last?.fields["x"] == .number(2))
+    #expect(changedFields == [["x": .number(2)]])
+}
