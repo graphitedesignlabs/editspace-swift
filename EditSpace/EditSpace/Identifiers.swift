@@ -124,6 +124,7 @@ public extension SceneField {
     static let visible: Self = "visible"
     static let opacity: Self = "opacity"
     static let meshID: Self = "meshID"
+    static let evaluatedMeshID: Self = "evaluatedMeshID"
     static let materialIDs: Self = "materialIDs"
     static let modifierIDs: Self = "modifierIDs"
     static let positions: Self = "positions"
