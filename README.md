@@ -259,6 +259,28 @@ replica.apply([create])
 
 `Replica` keeps the private convergence index needed to resolve later edits. The app receives only winning mutations plus `ReplicaMutationContext`, which includes the originating operation and the entity's complete resolved fields. Reattaching bindings and calling `replay()` reconstructs an app scene without making `SpaceState` part of the integration boundary.
 
+To exchange operations with v1 peers on the local network, create one repository and node for the application lifetime:
+
+```swift
+let repository = NetworkV1Repository(spaces: [spaceID])
+let node = NetworkV1Node(
+    peerID: .loadOrCreate(),
+    repository: repository,
+    selectedSpaces: [spaceID]
+) { event in
+    if case .received(let operation, _) = event {
+        Task { @MainActor in
+            replica.apply([operation])
+        }
+    }
+}
+
+try node.start()
+await node.publish(create)
+```
+
+`NetworkV1Node` advertises and browses `_editspace._tcp.local.`, creates the deterministic direct TCP connection for each discovered peer, and reconciles retained history before entering live delivery. Its repository records neighbor provenance, so an operation received from one peer is not silently relayed to another. The host app must declare `_editspace._tcp` in its Bonjour service list and provide its local-network privacy description on Apple platforms that require them.
+
 The public API is organized around:
 
 | Area | Swift types |
@@ -269,6 +291,7 @@ The public API is organized around:
 | Reduction | `OperationStamp`, `FieldRegister`, `EntityState`, `SpaceState`, `Materializer` |
 | Application projection | `Replica`, `ReplicaBindings`, `ReplicaMutationContext`, `ReplicaApplicationReport` |
 | Synchronization | `SyncEngine`, `SyncResult`, `OperationTransport`, `OperationStore` |
+| Local networking v1 | `NetworkV1Node`, `NetworkV1Repository`, `NetworkV1Session`, `NetworkV1Message`, `NetworkV1FrameCodec` |
 | Collaboration UI data | `PeerIdentity`, `PeerPresence`, `PresenceEnvelope`, `PresenceCodec`, `PresenceRoster` |
 
 GraphiteKit depends on the `0.3.0` release. Existing Graphite-prefixed CRDT APIs remain temporary aliases for one migration release; new interoperable protocol work should use the `EditSpace` module directly.
@@ -285,7 +308,7 @@ The Blender adapter should map scene changes to operations, apply remote state o
 swift test
 ```
 
-Or select the shared `EditSpace` scheme and **My Mac**, then run the test plan. The initial suite covers JSON round trips, convergence under reordered delivery, duplicate/collision behavior, presence expiry, and sync queue routing.
+Or select the shared `EditSpace` scheme and **My Mac**, then run the test plan. The suite covers JSON round trips, convergence under reordered delivery, duplicate/collision behavior, presence expiry, sync queue routing, v1 framing, session reconciliation, and non-forwarding provenance.
 
 ## Documentation
 
