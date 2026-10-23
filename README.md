@@ -37,11 +37,11 @@ Both the Xcode project and SwiftPM compile the same source and test directories.
 
 ## System overview
 
-![EditSpace specification and implementation hierarchy](Docs/architecture.png)
+![EditSpace specification and implementation hierarchy](./Docs/architecture.png)
 
 The language-neutral specification is the source of truth. The Swift and Python libraries independently implement that specification; neither language implementation defines the other. GraphiteKit imports the Swift library, and Graphite 3D uses GraphiteKit to serve its users. The Blender plug-in imports the Python library, and Blender hosts that plug-in for Blender users. An endpoint translates native 3D scene actions into immutable EditSpace operations. Operations are appended locally before transmission. Peer and durable-store imports are idempotent. Materializers replay the causally ordered log into endpoint-specific scene state.
 
-![EditSpace durable synchronization and ephemeral presence paths](Docs/sync-flow.png)
+![EditSpace durable synchronization and ephemeral presence paths](./Docs/sync-flow.png)
 
 ### Edit operation packet example
 
@@ -117,7 +117,7 @@ Version 1 uses UTF-8 JSON. Transports may frame, compress, encrypt, authenticate
 
 Core actions are `create`, `update`, `delete`, `duplicate`, `link`, and `unlink`. Core scene entities are `space`, `object`, `mesh`, `vertex`, `face`, `modifier`, `material`, `asset`, `constraint`, `parameter`, `dependency`, and `legacySnapshot`. `document` is accepted only as an early-v1 compatibility token.
 
-The protocol defines concrete 3D fields rather than leaving `fields` opaque: right-handed Y-up meter coordinates; vec2/vec3/vec4 and column-major matrix encodings; object transforms and hierarchy; bulk meshes and stable vertex/face entities; modifier inputs; metallic/roughness PBR materials; and hashed assets. See [the normative shared-scene model](Protocol/SPECIFICATION.md#35-shared-3d-scene-model).
+The protocol defines concrete 3D fields rather than leaving `fields` opaque: right-handed Y-up meter coordinates; vec2/vec3/vec4 and column-major matrix encodings; object transforms and hierarchy; bulk meshes and stable vertex/face entities; modifier inputs; metallic/roughness PBR materials; and hashed assets. See [the normative shared-scene model](https://github.com/graphitedesignlabs/EditSpace/blob/main/SPECIFICATION.md#35-shared-3d-scene-model).
 
 ### Space merging
 
@@ -289,7 +289,8 @@ Or select the shared `EditSpace` scheme and **My Mac**, then run the test plan. 
 
 ## Documentation
 
-- [Normative protocol specification](Protocol/SPECIFICATION.md)
+- [Normative protocol specification](https://github.com/graphitedesignlabs/EditSpace/blob/main/SPECIFICATION.md)
+- [Networking protocol v1 and v2 draft specification](https://github.com/graphitedesignlabs/EditSpace/blob/main/Docs/EditSpace-Networking-Design.md)
 - [System and API handbook (PDF)](Docs/EditSpace-System-and-API.pdf)
 - Open `EditSpace.xcodeproj` and build documentation for symbol-level DocC output.
 

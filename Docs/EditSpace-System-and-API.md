@@ -131,7 +131,9 @@ Implement the JSON Schemas first and validate against shared golden fixtures. Pe
 
 # Security and limits
 
-Authentication and encryption belong to the transport. Implementations should bind authenticated connections to actor/peer identity, sanitize user-facing strings and URLs, cap message size, nesting, operation count, dependency count and metadata sizes, and reject non-finite numbers. Presence is advisory and never conveys authorization.
+Network v1 is an explicitly unencrypted trusted-LAN protocol for minimum cross-platform interoperability. Network v2 adds stable cryptographic peer identity, explicit channel participation, durable operation attestations, and end-to-end encrypted drawing/session channels. Relay-only peers route opaque envelopes by random channel identifier without receiving channel keys. Group-key admission and rotation should use a reviewed protocol rather than custom cryptography; Messaging Layer Security is the leading candidate pending constrained-link prototypes.
+
+V2 implementations should bind authenticated connections to peer identity, keep presentation identity separate from cryptographic identity, sanitize user-facing strings and URLs, cap message size, nesting, operation count, dependency count and metadata sizes, and reject non-finite numbers. Presence is advisory and never conveys authorization. See the pinned protocol's networking specification for v1 LAN requirements and provisional v2 secure-LAN, offline-mesh, remote, and spatial profiles.
 
 # Versioning
 
