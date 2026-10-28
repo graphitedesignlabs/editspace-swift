@@ -108,6 +108,8 @@ public struct NetworkV1Hello: Codable, Equatable, Sendable {
     public let networkVersions: [Int]
     public let operationVersions: [Int]
     public let peerID: NetworkPeerID
+    /// Identifies this particular app process while `peerID` remains stable across launches.
+    public let instanceID: String?
     public let capabilities: [String]
     public let spaces: [SpaceID]
 
@@ -115,7 +117,8 @@ public struct NetworkV1Hello: Codable, Equatable, Sendable {
         networkVersions: [Int] = [1],
         operationVersions: [Int] = [1],
         peerID: NetworkPeerID,
-        capabilities: [String] = ["dns-sd", "history-ranges", "tcp"],
+        instanceID: String? = nil,
+        capabilities: [String] = ["application-messages", "dns-sd", "history-ranges", "tcp"],
         spaces: [SpaceID]
     ) {
         kind = Self.kind
@@ -123,12 +126,13 @@ public struct NetworkV1Hello: Codable, Equatable, Sendable {
         self.networkVersions = networkVersions
         self.operationVersions = operationVersions
         self.peerID = peerID
+        self.instanceID = instanceID
         self.capabilities = capabilities
         self.spaces = spaces
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, schemaVersion = "v", networkVersions, operationVersions, peerID, capabilities, spaces
+        case kind, schemaVersion = "v", networkVersions, operationVersions, peerID, instanceID, capabilities, spaces
     }
 }
 
@@ -247,6 +251,34 @@ public struct NetworkV1SyncComplete: Codable, Equatable, Sendable {
     }
 }
 
+/// Ephemeral application data carried beside durable EditSpace operations.
+/// These messages are never retained or replayed as document history.
+public struct NetworkV1ApplicationMessage: Codable, Equatable, Sendable {
+    public static let kind = "editspace.network.application"
+
+    public let kind: String
+    public let schemaVersion: Int
+    public let messageID: String
+    public let channel: String
+    public let payload: Data
+
+    public init(
+        messageID: String = UUID().uuidString.lowercased(),
+        channel: String,
+        payload: Data
+    ) {
+        kind = Self.kind
+        schemaVersion = 1
+        self.messageID = messageID
+        self.channel = channel
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, schemaVersion = "v", messageID, channel, payload
+    }
+}
+
 public struct NetworkV1ErrorMessage: Codable, Equatable, Sendable {
     public static let kind = "editspace.network.error"
 
@@ -310,6 +342,7 @@ public enum NetworkV1Message: Equatable, Sendable {
     case operationRequest(NetworkV1OperationRequest)
     case operationBatch(NetworkV1OperationBatch)
     case syncComplete(NetworkV1SyncComplete)
+    case application(NetworkV1ApplicationMessage)
     case error(NetworkV1ErrorMessage)
 }
 
@@ -326,6 +359,7 @@ extension NetworkV1Message: Codable {
         case NetworkV1OperationRequest.kind: self = .operationRequest(try NetworkV1OperationRequest(from: decoder))
         case NetworkV1OperationBatch.kind: self = .operationBatch(try NetworkV1OperationBatch(from: decoder))
         case NetworkV1SyncComplete.kind: self = .syncComplete(try NetworkV1SyncComplete(from: decoder))
+        case NetworkV1ApplicationMessage.kind: self = .application(try NetworkV1ApplicationMessage(from: decoder))
         case NetworkV1ErrorMessage.kind: self = .error(try NetworkV1ErrorMessage(from: decoder))
         default:
             throw NetworkV1CodecError.unsupportedMessage(kind)
@@ -340,6 +374,7 @@ extension NetworkV1Message: Codable {
         case .operationRequest(let value): try value.encode(to: encoder)
         case .operationBatch(let value): try value.encode(to: encoder)
         case .syncComplete(let value): try value.encode(to: encoder)
+        case .application(let value): try value.encode(to: encoder)
         case .error(let value): try value.encode(to: encoder)
         }
     }
@@ -407,6 +442,15 @@ enum NetworkV1Validator {
         case .syncComplete(let complete):
             guard complete.kind == NetworkV1SyncComplete.kind, complete.schemaVersion == 1,
                   !complete.summaryID.isEmpty else { throw NetworkV1CodecError.invalidMessage("Invalid syncComplete") }
+        case .application(let application):
+            guard application.kind == NetworkV1ApplicationMessage.kind,
+                  application.schemaVersion == 1,
+                  !application.messageID.isEmpty,
+                  !application.channel.isEmpty,
+                  application.channel.count <= 128,
+                  application.payload.count <= NetworkV1FrameCodec.maximumPayloadSize / 2 else {
+                throw NetworkV1CodecError.invalidMessage("Invalid application message")
+            }
         case .error(let error):
             guard error.kind == NetworkV1ErrorMessage.kind, error.schemaVersion == 1,
                   error.fatal == error.code.isFatal else { throw NetworkV1CodecError.invalidMessage("Invalid networkError") }

@@ -49,6 +49,19 @@ public actor NetworkV1Repository {
         offeredSpaces.remove(spaceID)
     }
 
+    public func replaceOfferedSpaces(with spaces: Set<SpaceID>) {
+        offeredSpaces = spaces
+    }
+
+    public func removeAllHistory(keeping spaces: Set<SpaceID>) {
+        offeredSpaces = spaces
+        operationsByID.removeAll()
+        actorSequences.removeAll()
+        mergeRegistry = SpaceMergeRegistry()
+        mergeProvenance.removeAll()
+        snapshots.removeAll()
+    }
+
     public func spaces() -> [SpaceID] {
         offeredSpaces.sorted()
     }
@@ -61,6 +74,13 @@ public actor NetworkV1Repository {
     @discardableResult
     public func appendApprovedImport(_ operation: EditOperation) -> NetworkV1ImportResult {
         insert(operation, provenance: .approvedImport)
+    }
+
+    /// Seeds networking from the application's authoritative operation log.
+    /// Identical operations are idempotent, so restored history may be supplied repeatedly.
+    public func seedLocalHistory<S: Sequence>(_ operations: S) -> [NetworkV1ImportResult]
+    where S.Element == EditOperation {
+        operations.map { insert($0, provenance: .local) }
     }
 
     @discardableResult
@@ -79,6 +99,10 @@ public actor NetworkV1Repository {
         return operationsByID.values.map(\.operation)
             .filter { component.contains($0.spaceID) }
             .sorted(by: operationOrder)
+    }
+
+    public func operation(for operationID: OperationID) -> EditOperation? {
+        operationsByID[operationID]?.operation
     }
 
     public func canonicalSpaceID(for spaceID: SpaceID) -> SpaceID {

@@ -281,6 +281,12 @@ await node.publish(create)
 
 `NetworkV1Node` advertises and browses `_editspace._tcp.local.`, creates the deterministic direct TCP connection for each discovered peer, and reconciles retained history before entering live delivery. Its repository records neighbor provenance, so an operation received from one peer is not silently relayed to another. The host app must declare `_editspace._tcp` in its Bonjour service list and provide its local-network privacy description on Apple platforms that require them.
 
+Peers advertising `application-messages` may also exchange opaque, ephemeral
+payloads on application-defined channels after synchronization. These messages
+use the same language-neutral length-prefixed JSON connection but are not added
+to durable operation history. Non-Swift implementations can use the networking
+schema and conformance vectors in `Protocol/` as their interoperability contract.
+
 The public API is organized around:
 
 | Area | Swift types |

@@ -26,6 +26,7 @@ public actor NetworkV1Session {
     private let repository: NetworkV1Repository
     private let selectedSpaces: Set<SpaceID>
     private let expectedRemotePeerID: NetworkPeerID?
+    private let localInstanceID: String?
     private var remoteHello: NetworkV1Hello?
     private var sentSelection: NetworkV1SpaceSelection?
     private var remoteSelection: NetworkV1SpaceSelection?
@@ -37,18 +38,24 @@ public actor NetworkV1Session {
 
     public init(
         localPeerID: NetworkPeerID,
+        localInstanceID: String? = nil,
         expectedRemotePeerID: NetworkPeerID? = nil,
         repository: NetworkV1Repository,
         selectedSpaces: Set<SpaceID>
     ) {
         self.localPeerID = localPeerID
+        self.localInstanceID = localInstanceID
         self.expectedRemotePeerID = expectedRemotePeerID
         self.repository = repository
         self.selectedSpaces = selectedSpaces
     }
 
     public func initialMessages() async -> [NetworkV1Message] {
-        [.hello(NetworkV1Hello(peerID: localPeerID, spaces: await repository.spaces()))]
+        [.hello(NetworkV1Hello(
+            peerID: localPeerID,
+            instanceID: localInstanceID,
+            spaces: await repository.spaces()
+        ))]
     }
 
     public func receive(_ message: NetworkV1Message) async throws -> [NetworkV1Message] {
@@ -73,14 +80,60 @@ public actor NetworkV1Session {
     }
 
     public func liveBatch(for operation: EditOperation) async -> NetworkV1Message? {
-        let canonicalSpaceID = await repository.canonicalSpaceID(for: operation.spaceID)
-        guard state == .live, activeSpaces.contains(canonicalSpaceID) else { return nil }
+        await liveBatch(for: [operation])
+    }
+
+    public func liveBatch(for operations: [EditOperation]) async -> NetworkV1Message? {
+        guard state == .live, let first = operations.first else { return nil }
+        let canonicalSpaceID = await repository.canonicalSpaceID(for: first.spaceID)
+        guard activeSpaces.contains(canonicalSpaceID) else { return nil }
+
+        var envelopes: [OperationEnvelope] = []
+        for operation in operations {
+            let operationSpaceID = await repository.canonicalSpaceID(for: operation.spaceID)
+            guard operationSpaceID == canonicalSpaceID else { continue }
+            if let last = envelopes.last, last.spaceID == operation.spaceID {
+                envelopes[envelopes.count - 1] = OperationEnvelope(
+                    spaceID: last.spaceID,
+                    operations: last.operations + [operation]
+                )
+            } else {
+                envelopes.append(OperationEnvelope(spaceID: operation.spaceID, operations: [operation]))
+            }
+        }
+        guard !envelopes.isEmpty else { return nil }
         return .operationBatch(NetworkV1OperationBatch(
             requestID: nil,
             final: true,
             spaceID: canonicalSpaceID,
-            envelopes: [OperationEnvelope(spaceID: operation.spaceID, operations: [operation])]
+            envelopes: envelopes
         ))
+    }
+
+    public func applicationMessage(_ message: NetworkV1ApplicationMessage) -> NetworkV1Message? {
+        guard state == .live,
+              remoteHello?.capabilities.contains("application-messages") == true else {
+            return nil
+        }
+        return .application(message)
+    }
+
+    public func hasAccepted(_ operation: EditOperation) async -> Bool {
+        await repository.operation(for: operation.operationID) == operation
+    }
+
+    /// Re-advertises the current retained ranges without rebuilding the link.
+    /// This is used when an application restores or prepares history after the
+    /// initial connection handshake has already completed.
+    public func reconciliationMessages() async -> [NetworkV1Message] {
+        guard state == .live, let remotePeerID else { return [] }
+        var messages: [NetworkV1Message] = []
+        for spaceID in activeSpaces.sorted() {
+            messages.append(.historySummary(
+                await repository.makeSummary(for: spaceID, neighbor: remotePeerID)
+            ))
+        }
+        return messages
     }
 
     private func receiveHello(_ hello: NetworkV1Hello) async throws -> [NetworkV1Message] {
@@ -239,6 +292,12 @@ public actor NetworkV1Session {
             guard activeSpaces.contains(complete.spaceID) else { return try fail(.invalidMessage, "Completion is outside the active spaces") }
             remotelyComplete.insert(complete.spaceID)
             updateLiveState()
+            return []
+        case .application:
+            guard state == .live,
+                  remoteHello?.capabilities.contains("application-messages") == true else {
+                return try fail(.unexpectedMessage, "Application messages require a synchronized connection")
+            }
             return []
         default:
             return try fail(.unexpectedMessage, "Message is not valid while synchronizing")
