@@ -170,7 +170,8 @@ public struct Materializer: Sendable {
             return
         }
 
-        if state.isTombstoned(reference) {
+        if let tombstone = state.tombstones[reference],
+           !(tombstone.stamp < operation.stamp) {
             state.markSkipped(operation)
             state.addConflict(Conflict(
                 kind: .tombstonedTarget,
@@ -187,7 +188,19 @@ public struct Materializer: Sendable {
             return
         }
 
-        if var existing = state.entities[reference] {
+        if state.isTombstoned(reference) {
+            // A create newer than the winning delete is an explicit restore.
+            // Replace the old entity snapshot so fields removed before deletion
+            // cannot leak into the restored object. The tombstone remains as the
+            // ordering record that rejects delayed pre-delete creates.
+            state.upsertEntity(EntityState(
+                reference: reference,
+                sourceID: operation.sourceID,
+                fields: operation.fields,
+                arguments: operation.arguments,
+                createdBy: operation
+            ))
+        } else if var existing = state.entities[reference] {
             existing.updateFields(operation.fields, with: operation)
             existing.updateArguments(operation.arguments, with: operation)
             state.upsertEntity(existing)

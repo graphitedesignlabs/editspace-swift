@@ -495,6 +495,8 @@ private final class NetworkV1Link: @unchecked Sendable {
     private var didSynchronize = false
     private var timeoutItem: DispatchWorkItem?
     private var pendingApplicationMessages: [NetworkV1ApplicationMessage] = []
+    private let pendingOperationLock = NSLock()
+    private var pendingOperationBatches: [[EditOperation]] = []
     private var inboundProcessingTask: Task<Void, Never>?
     private var outboundOperationTask: Task<Void, Never>?
 
@@ -536,10 +538,45 @@ private final class NetworkV1Link: @unchecked Sendable {
 
     func publish(_ operations: [EditOperation]) {
         guard !operations.isEmpty else { return }
+        enqueuePendingOperations(operations)
+        scheduleOutboundOperationFlush()
+    }
+
+    private func enqueuePendingOperations(_ operations: [EditOperation], atFront: Bool = false) {
+        pendingOperationLock.lock()
+        defer { pendingOperationLock.unlock() }
+        if atFront {
+            pendingOperationBatches.insert(operations, at: 0)
+        } else {
+            pendingOperationBatches.append(operations)
+        }
+    }
+
+    private func dequeuePendingOperations() -> [EditOperation]? {
+        pendingOperationLock.lock()
+        defer { pendingOperationLock.unlock() }
+        return pendingOperationBatches.isEmpty ? nil : pendingOperationBatches.removeFirst()
+    }
+
+    private func scheduleOutboundOperationFlush() {
         let previousTask = outboundOperationTask
-        outboundOperationTask = Task {
+        outboundOperationTask = Task { [weak self] in
             await previousTask?.value
-            guard let message = await session.liveBatch(for: operations) else { return }
+            await self?.flushPendingOperationsIfLive()
+        }
+    }
+
+    private func flushPendingOperationsIfLive() async {
+        guard await session.state == .live else { return }
+
+        while true {
+            let operations = dequeuePendingOperations()
+            guard let operations else { return }
+
+            guard let message = await session.liveBatch(for: operations) else {
+                enqueuePendingOperations(operations, atFront: true)
+                return
+            }
             await send([message])
         }
     }
@@ -627,6 +664,7 @@ private final class NetworkV1Link: @unchecked Sendable {
             case .synchronizing: armTimeout(seconds: 120)
             case .live:
                 cancelTimeout()
+                scheduleOutboundOperationFlush()
                 if !didSynchronize {
                     didSynchronize = true
                     let pending = pendingApplicationMessages

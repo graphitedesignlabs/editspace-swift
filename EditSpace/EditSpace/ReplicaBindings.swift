@@ -305,6 +305,12 @@ public extension Materializer {
         for reference in references {
             switch (before[reference], after[reference]) {
             case (nil, let entity?):
+                EditSpaceInstrumentation.log(
+                    "replica.visibilityCreate",
+                    keywords: ["replica", "projection", "visibility", "crud"],
+                    "space=\(operation.spaceID.rawValue) op=\(operation.operationID.rawValue) action=\(operation.action.rawValue) entity=\(reference.description) sequence=\(operation.sequence)",
+                    level: .info
+                )
                 let context = mutationContext(operation: operation, entity: entity)
                 perform(reference: reference, operationID: operation.operationID, failures: &failures) {
                     try bindings.create(context)
@@ -316,6 +322,12 @@ public extension Materializer {
                 }
 
             case (let previous?, nil):
+                EditSpaceInstrumentation.log(
+                    "replica.visibilityDelete",
+                    keywords: ["replica", "projection", "visibility", "crud"],
+                    "space=\(operation.spaceID.rawValue) op=\(operation.operationID.rawValue) action=\(operation.action.rawValue) entity=\(reference.description) sequence=\(operation.sequence)",
+                    level: .info
+                )
                 let context = mutationContext(operation: operation, entity: previous)
                 perform(reference: reference, operationID: operation.operationID, failures: &failures) {
                     try bindings.delete(context)

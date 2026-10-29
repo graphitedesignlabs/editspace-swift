@@ -17,6 +17,7 @@ public struct EntityState: Equatable, Sendable {
     public private(set) var arguments: [String: Value]
     public private(set) var links: Set<EntityReference>
     public let createdBy: OperationID
+    public let creationStamp: OperationStamp
     public private(set) var updatedBy: OperationID
 
     public init(reference: EntityReference,
@@ -31,6 +32,7 @@ public struct EntityState: Equatable, Sendable {
         self.arguments = arguments
         self.links = []
         self.createdBy = operation.operationID
+        self.creationStamp = operation.stamp
         self.updatedBy = operation.operationID
     }
 
@@ -143,7 +145,10 @@ public struct SpaceState: Equatable, Sendable {
     }
 
     public var visibleEntities: [EntityReference: EntityState] {
-        entities.filter { tombstones[$0.key] == nil }
+        entities.filter { reference, entity in
+            guard let tombstone = tombstones[reference] else { return true }
+            return tombstone.stamp < entity.creationStamp
+        }
     }
 
     public func entity(kind: EntityKind, id: EntityID) -> EntityState? {
@@ -151,7 +156,9 @@ public struct SpaceState: Equatable, Sendable {
     }
 
     public func isTombstoned(_ reference: EntityReference) -> Bool {
-        tombstones[reference] != nil
+        guard let tombstone = tombstones[reference] else { return false }
+        guard let entity = entities[reference] else { return true }
+        return !(tombstone.stamp < entity.creationStamp)
     }
 
     mutating func markApplied(_ operation: EditOperation) {

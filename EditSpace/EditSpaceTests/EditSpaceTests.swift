@@ -46,6 +46,57 @@ private func operation(
     #expect(Materializer.materialize(first).entities[reference]?.fields["x"] == .number(2))
 }
 
+@Test func newerCreateRestoresDeletedEntityRegardlessOfArrivalOrder() {
+    let create = operation(
+        actor: "a",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Original"), "obsolete": .bool(true)]
+    )
+    let delete = operation(
+        actor: "a",
+        sequence: 2,
+        action: .delete,
+        dependencies: [create.operationID]
+    )
+    let restore = operation(
+        actor: "a",
+        sequence: 3,
+        action: .create,
+        fields: ["name": .string("Restored")],
+        dependencies: [delete.operationID]
+    )
+    let reference = EntityReference(kind: .object, id: objectID)
+
+    let ordered = Materializer().materialize(
+        spaceID: spaceID,
+        operations: [create, delete, restore]
+    )
+    let shuffled = Materializer().materialize(
+        spaceID: spaceID,
+        operations: [restore, create, delete]
+    )
+
+    #expect(ordered == shuffled)
+    #expect(ordered.visibleEntities[reference]?.fields["name"] == .string("Restored"))
+    #expect(ordered.visibleEntities[reference]?.fields["obsolete"] == nil)
+    #expect(ordered.tombstones[reference]?.deletedBy == delete.operationID)
+}
+
+@Test func staleCreateCannotRestoreDeletedEntity() {
+    let staleCreate = operation(actor: "a", sequence: 1, action: .create)
+    let delete = operation(actor: "a", sequence: 2, action: .delete)
+    let reference = EntityReference(kind: .object, id: objectID)
+    var state = SpaceState(spaceID: spaceID)
+    let materializer = Materializer()
+
+    materializer.materialize(operations: [delete], onto: &state)
+    materializer.materialize(operations: [staleCreate], onto: &state)
+
+    #expect(state.visibleEntities[reference] == nil)
+    #expect(state.skippedOperationIDs.contains(staleCreate.operationID))
+}
+
 @Test func duplicatesAreIdempotentAndCollisionsAreRejected() {
     let create = operation(actor: "a", sequence: 1, action: .create)
     var log = OperationLog(spaceID: spaceID)
