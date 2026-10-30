@@ -1,6 +1,6 @@
 import Foundation
 
-public struct FieldRegister: Equatable, Sendable {
+public struct FieldRegister: Codable, Equatable, Sendable {
     public let value: Value
     public let stamp: OperationStamp
 
@@ -34,6 +34,17 @@ public struct EntityState: Equatable, Sendable {
         self.createdBy = operation.operationID
         self.creationStamp = operation.stamp
         self.updatedBy = operation.operationID
+    }
+
+    init(snapshot: StateSnapshotEntity) {
+        self.reference = snapshot.reference
+        self.sourceID = snapshot.sourceID
+        self.fieldRegisters = snapshot.fieldRegisters
+        self.arguments = snapshot.arguments
+        self.links = Set(snapshot.links)
+        self.createdBy = snapshot.createdBy
+        self.creationStamp = snapshot.creationStamp
+        self.updatedBy = snapshot.updatedBy
     }
 
     public var fields: [String: Value] {
@@ -83,6 +94,12 @@ public struct Tombstone: Equatable, Sendable {
         self.reference = reference
         self.deletedBy = operation.operationID
         self.stamp = operation.stamp
+    }
+
+    init(snapshot: StateSnapshotTombstone) {
+        self.reference = snapshot.reference
+        self.deletedBy = snapshot.deletedBy
+        self.stamp = snapshot.stamp
     }
 }
 
@@ -140,6 +157,24 @@ public struct SpaceState: Equatable, Sendable {
         self.tombstones = [:]
         self.conflicts = []
         self.appliedOperationIDs = []
+        self.skippedOperationIDs = []
+        self.unappliedOperations = []
+    }
+
+    public init(snapshot: StateSnapshot) {
+        self.spaceID = snapshot.spaceID
+        self.entities = Dictionary(
+            uniqueKeysWithValues: snapshot.entities.map {
+                ($0.reference, EntityState(snapshot: $0))
+            }
+        )
+        self.tombstones = Dictionary(
+            uniqueKeysWithValues: snapshot.tombstones.map {
+                ($0.reference, Tombstone(snapshot: $0))
+            }
+        )
+        self.conflicts = []
+        self.appliedOperationIDs = Set(snapshot.appliedOperationIDs)
         self.skippedOperationIDs = []
         self.unappliedOperations = []
     }

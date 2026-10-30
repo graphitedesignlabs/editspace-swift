@@ -177,4 +177,10 @@ public struct OperationStamp: Codable, Hashable, Comparable, Sendable {
         if lhs.actorID != rhs.actorID { return lhs.actorID < rhs.actorID }
         return lhs.operationID < rhs.operationID
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case sequence = "seq"
+        case actorID = "actor"
+        case operationID = "op"
+    }
 }

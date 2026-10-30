@@ -395,6 +395,182 @@ private func operation(
     #expect(linkSawEveryEntity)
 }
 
+@Test func stateSnapshotRoundTripsResolvedRegistersAndTombstones() throws {
+    let retainedID = EntityID(rawValue: "retained")
+    let deletedID = EntityID(rawValue: "deleted")
+    let createRetained = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "ios"),
+        sequence: 1,
+        action: .create,
+        entity: .object,
+        targetID: retainedID,
+        fields: ["name": .string("Retained"), "x": .number(1)],
+        createdAt: nil
+    )
+    let updateRetained = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "vision"),
+        sequence: 2,
+        action: .update,
+        entity: .object,
+        targetID: retainedID,
+        fields: ["x": .number(2)],
+        createdAt: nil
+    )
+    let createDeleted = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "ios"),
+        sequence: 3,
+        action: .create,
+        entity: .object,
+        targetID: deletedID,
+        createdAt: nil
+    )
+    let delete = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "ios"),
+        sequence: 4,
+        dependencies: [createDeleted.operationID],
+        action: .delete,
+        entity: .object,
+        targetID: deletedID,
+        createdAt: nil
+    )
+    let original = Materializer().materialize(
+        spaceID: spaceID,
+        operations: [createRetained, updateRetained, createDeleted, delete]
+    )
+
+    let encoded = try StateSnapshotCodec.encode(StateSnapshot(state: original))
+    let wire = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    let wireEntities = try #require(wire["entities"] as? [[String: Any]])
+    let wireRetainedEntity = try #require(wireEntities.first { entity in
+        let reference = entity["reference"] as? [String: Any]
+        return reference?["id"] as? String == retainedID.rawValue
+    })
+    let wireRegisters = try #require(wireRetainedEntity["fieldRegisters"] as? [String: Any])
+    let wireXRegister = try #require(wireRegisters["x"] as? [String: Any])
+    let wireStamp = try #require(wireXRegister["stamp"] as? [String: Any])
+    #expect(wire["kind"] as? String == StateSnapshot.kind)
+    #expect(wire["v"] as? Int == StateSnapshot.currentSchemaVersion)
+    #expect(wire["doc"] as? String == spaceID.rawValue)
+    #expect(wireStamp["seq"] as? Int == Int(updateRetained.sequence))
+    #expect(wireStamp["actor"] as? String == updateRetained.actorID.rawValue)
+    #expect(wireStamp["op"] as? String == updateRetained.operationID.rawValue)
+    let decoded = try StateSnapshotCodec.decode(encoded)
+    let restored = SpaceState(snapshot: decoded)
+    let retainedReference = EntityReference(kind: .object, id: retainedID)
+    let deletedReference = EntityReference(kind: .object, id: deletedID)
+
+    #expect(restored == original)
+    #expect(restored.entities[retainedReference]?.fields["x"] == .number(2))
+    #expect(restored.entities[retainedReference]?.fieldRegisters["x"]?.stamp == updateRetained.stamp)
+    #expect(restored.visibleEntities[deletedReference] == nil)
+    #expect(restored.tombstones[deletedReference]?.deletedBy == delete.operationID)
+
+    let negotiatedSpaceID = SpaceID(rawValue: "negotiated")
+    let rebased = decoded.resolvingSpace(to: negotiatedSpaceID)
+    #expect(rebased.spaceID == negotiatedSpaceID)
+    #expect(rebased.entities == decoded.entities)
+    #expect(rebased.tombstones == decoded.tombstones)
+    #expect(rebased.appliedOperationIDs == decoded.appliedOperationIDs)
+}
+
+@Test func replicaSnapshotReplacementDeletesStaleProjectionAndReplaysResolvedState() {
+    let staleID = EntityID(rawValue: "stale")
+    let retainedID = EntityID(rawValue: "retained")
+    let staleCreate = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "ios"),
+        sequence: 1,
+        action: .create,
+        entity: .object,
+        targetID: staleID,
+        fields: ["name": .string("Stale")],
+        createdAt: nil
+    )
+    let retainedCreate = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "vision"),
+        sequence: 2,
+        action: .create,
+        entity: .object,
+        targetID: retainedID,
+        fields: ["name": .string("Retained")],
+        createdAt: nil
+    )
+    var projected: [EntityReference: [String: Value]] = [:]
+    var events: [String] = []
+    let bindings = ReplicaBindings(
+        create: { context in
+            projected[context.reference] = context.fields
+            events.append("create:\(context.reference.id.rawValue)")
+        },
+        update: { context, fields, _ in
+            projected[context.reference, default: [:]].merge(fields) { _, new in new }
+        },
+        delete: { context in
+            projected.removeValue(forKey: context.reference)
+            events.append("delete:\(context.reference.id.rawValue)")
+        },
+        setLink: { _, _, _ in }
+    )
+    let replica = Replica(spaceID: spaceID, bindings: bindings)
+    _ = replica.apply([staleCreate])
+    events.removeAll()
+    let replacementState = Materializer().materialize(
+        spaceID: spaceID,
+        operations: [retainedCreate]
+    )
+
+    let report = replica.apply(StateSnapshot(state: replacementState))
+    let staleReference = EntityReference(kind: .object, id: staleID)
+    let retainedReference = EntityReference(kind: .object, id: retainedID)
+
+    #expect(report.failures.isEmpty)
+    #expect(events == ["delete:stale", "create:retained"])
+    #expect(projected[staleReference] == nil)
+    #expect(projected[retainedReference]?["name"] == .string("Retained"))
+}
+
+@Test func replicaRejectsSnapshotFromAnotherSpaceWithoutChangingStateOrProjection() {
+    let create = operation(
+        actor: "ios",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Original")]
+    )
+    var projectedCreateCount = 0
+    var projectedDeleteCount = 0
+    var projectedFields: [String: Value] = [:]
+    let replica = Replica(spaceID: spaceID, bindings: ReplicaBindings(
+        create: { context in
+            projectedCreateCount += 1
+            projectedFields = context.fields
+        },
+        update: { _, _, _ in },
+        delete: { _ in projectedDeleteCount += 1 },
+        setLink: { _, _, _ in }
+    ))
+    _ = replica.apply([create])
+    let foreignState = Materializer().materialize(
+        spaceID: SpaceID(rawValue: "foreign"),
+        operations: []
+    )
+
+    let report = replica.apply(StateSnapshot(state: foreignState))
+
+    #expect(report.failures.isEmpty)
+    #expect(projectedCreateCount == 1)
+    #expect(projectedDeleteCount == 0)
+    #expect(projectedFields["name"] == .string("Original"))
+
+    _ = replica.replay()
+    #expect(projectedCreateCount == 2)
+    #expect(projectedFields["name"] == .string("Original"))
+}
+
 @Test func spaceMergeRegistryConvergesAcrossOrderAndRepeatedDelivery() throws {
     let a = SpaceID(rawValue: "a")
     let b = SpaceID(rawValue: "b")

@@ -182,9 +182,47 @@ public final class Replica {
     public func replay() -> ReplicaApplicationReport {
         materializer.replay(state, using: bindings)
     }
+
+    /// Atomically replaces the replica's resolved state and reconciles the
+    /// attached application projection once.
+    @discardableResult
+    public func apply(_ snapshot: StateSnapshot) -> ReplicaApplicationReport {
+        guard snapshot.spaceID == spaceID else { return ReplicaApplicationReport() }
+        return materializer.replace(&state, with: snapshot, using: bindings)
+    }
 }
 
 public extension Materializer {
+    func replace(
+        _ state: inout SpaceState,
+        with snapshot: StateSnapshot,
+        using bindings: ReplicaBindings
+    ) -> ReplicaApplicationReport {
+        let previousEntities = state.visibleEntities
+        state = SpaceState(snapshot: snapshot)
+        let nextEntities = state.visibleEntities
+        var failures: [ReplicaApplicationFailure] = []
+
+        for reference in previousEntities.keys where nextEntities[reference] == nil {
+            guard let entity = previousEntities[reference] else { continue }
+            let context = ReplicaMutationContext(
+                operation: nil,
+                reference: reference,
+                sourceID: entity.sourceID,
+                fields: entity.fields,
+                fieldStamps: entity.fieldRegisters.mapValues(\.stamp),
+                arguments: entity.arguments
+            )
+            perform(reference: reference, operationID: nil, failures: &failures) {
+                try bindings.delete(context)
+            }
+        }
+
+        let replayReport = replay(state, using: bindings)
+        failures.append(contentsOf: replayReport.failures)
+        return ReplicaApplicationReport(failures: failures)
+    }
+
     /// Resolves operations and immediately projects only winning changes through
     /// application-supplied functions. Binding failures do not roll back the
     /// canonical merge index; call ``replay(_:using:)`` to rebuild the projection.
