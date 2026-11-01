@@ -63,6 +63,7 @@ public struct ProtocolToken: RawRepresentable, Codable, Hashable, Comparable, Se
 public typealias OperationAction = ProtocolToken
 public typealias EntityKind = ProtocolToken
 public typealias Feature = ProtocolToken
+public typealias ModifierType = ProtocolToken
 
 public extension OperationAction {
     static let create: Self = "create"
@@ -104,6 +105,11 @@ public extension Feature {
     static let legacySnapshotV1: Self = "legacySnapshot.v1"
 }
 
+public extension ModifierType {
+    /// Requests peer-generated geometry using the standardized generative modifier lifecycle.
+    static let generative: Self = "generative"
+}
+
 /// An extensible field name from the EditSpace shared 3D scene vocabulary.
 public typealias SceneField = ProtocolToken
 
@@ -133,10 +139,18 @@ public extension SceneField {
     static let colors: Self = "colors"
     static let faces: Self = "faces"
     static let materialIndices: Self = "materialIndices"
+    static let bounds: Self = "bounds"
     static let objectID: Self = "objectID"
     static let modifierType: Self = "modifierType"
     static let enabled: Self = "enabled"
     static let order: Self = "order"
+    static let prompt: Self = "prompt"
+    static let status: Self = "status"
+    static let claimant: Self = "claimant"
+    static let claimID: Self = "claimID"
+    static let responseToClaimID: Self = "responseToClaimID"
+    static let resultMeshID: Self = "resultMeshID"
+    static let error: Self = "error"
     static let baseColor: Self = "baseColor"
     static let metallic: Self = "metallic"
     static let roughness: Self = "roughness"

@@ -211,6 +211,134 @@ private func operation(
     #expect(!SceneFieldValidator.errors(for: malformedMesh).isEmpty)
 }
 
+@Test func generativeModifierVocabularyValidatesLifecycleOperations() {
+    let modifierID = EntityID(rawValue: "generate-1")
+    let worker = ActorID(rawValue: "worker")
+    let claimID = OperationID(actorID: worker, sequence: 1)
+    let bounds = GenerativeBounds(minimum: [-1, 0, -1], maximum: [1, 2, 1])
+    let requestFields = GenerativeModifierFields.request(
+        objectID: objectID,
+        prompt: "A low-poly fox",
+        bounds: bounds
+    )
+    #expect(requestFields != nil)
+
+    let request = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "author"),
+        sequence: 1,
+        action: .create,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: requestFields ?? [:],
+        requiredFeatures: [.coreV1, .modifiersV1],
+        createdAt: nil
+    )
+    let claim = EditOperation(
+        spaceID: spaceID,
+        actorID: worker,
+        sequence: 1,
+        dependencies: [request.operationID],
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: GenerativeModifierFields.claim(actorID: worker, claimID: claimID),
+        requiredFeatures: [.coreV1, .modifiersV1],
+        createdAt: nil
+    )
+    let completion = EditOperation(
+        spaceID: spaceID,
+        actorID: worker,
+        sequence: 2,
+        dependencies: [claim.operationID],
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: GenerativeModifierFields.success(
+            claimID: claim.operationID,
+            resultMeshID: EntityID(rawValue: "generated-mesh")
+        ),
+        requiredFeatures: [.coreV1, .modifiersV1],
+        createdAt: nil
+    )
+
+    #expect(SceneFieldValidator.errors(for: request).isEmpty)
+    #expect(SceneFieldValidator.errors(for: claim).isEmpty)
+    #expect(SceneFieldValidator.errors(for: completion).isEmpty)
+
+    let failure = EditOperation(
+        spaceID: spaceID,
+        actorID: worker,
+        sequence: 3,
+        dependencies: [claim.operationID],
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: GenerativeModifierFields.failure(
+            claimID: claim.operationID,
+            error: "Generator could not produce a valid mesh"
+        ) ?? [:],
+        requiredFeatures: [.coreV1, .modifiersV1],
+        createdAt: nil
+    )
+    #expect(SceneFieldValidator.errors(for: failure).isEmpty)
+
+    let malformedClaim = EditOperation(
+        spaceID: spaceID,
+        actorID: worker,
+        sequence: 3,
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: GenerativeModifierFields.claim(
+            actorID: ActorID(rawValue: "different-worker"),
+            claimID: OperationID(actorID: worker, sequence: 3)
+        ),
+        createdAt: nil
+    )
+    #expect(!SceneFieldValidator.errors(for: malformedClaim).isEmpty)
+}
+
+@Test func concurrentGenerativeClaimsConvergeByOperationStamp() {
+    let modifierID = EntityID(rawValue: "generate-1")
+    let request = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "author"),
+        sequence: 1,
+        action: .create,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: GenerativeModifierFields.request(objectID: objectID, prompt: "A twelve-tooth gear") ?? [:],
+        createdAt: nil
+    )
+    func claim(actor: String) -> EditOperation {
+        let actorID = ActorID(rawValue: actor)
+        let claimID = OperationID(actorID: actorID, sequence: 2)
+        return EditOperation(
+            spaceID: spaceID,
+            actorID: actorID,
+            sequence: 2,
+            dependencies: [request.operationID],
+            action: .update,
+            entity: .modifier,
+            targetID: modifierID,
+            fields: GenerativeModifierFields.claim(actorID: actorID, claimID: claimID),
+            createdAt: nil
+        )
+    }
+    let claimA = claim(actor: "worker-a")
+    let claimB = claim(actor: "worker-b")
+    let state = Materializer().materialize(
+        spaceID: spaceID,
+        operations: [claimB, request, claimA]
+    )
+    let modifier = state.entity(kind: .modifier, id: modifierID)
+
+    #expect(modifier?.fields[SceneField.status.rawValue] == .string(GenerativeModifierStatus.running.rawValue))
+    #expect(modifier?.fields[SceneField.claimant.rawValue] == .string("worker-b"))
+    #expect(modifier?.fields[SceneField.claimID.rawValue] == .string("worker-b:2"))
+}
+
 @Test func unsupportedOperationsArePreservedWithoutBeingMaterialized() {
     let unsupported = operation(
         actor: "a",
