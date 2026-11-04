@@ -198,11 +198,35 @@ public struct SpaceState: Equatable, Sendable {
 
     mutating func markApplied(_ operation: EditOperation) {
         appliedOperationIDs.insert(operation.operationID)
+        skippedOperationIDs.remove(operation.operationID)
+        unappliedOperations.removeAll { $0.operationID == operation.operationID }
+        conflicts.removeAll { $0.operationID == operation.operationID }
     }
 
     mutating func markSkipped(_ operation: EditOperation) {
         if skippedOperationIDs.insert(operation.operationID).inserted {
             unappliedOperations.append(operation)
+        }
+    }
+
+    var transientlyUnappliedOperations: [EditOperation] {
+        let transientIDs = Set(conflicts.compactMap { conflict in
+            switch conflict.kind {
+            case .missingTarget, .missingSource:
+                conflict.operationID
+            default:
+                nil
+            }
+        })
+        return unappliedOperations.filter { transientIDs.contains($0.operationID) }
+    }
+
+    mutating func prepareTransientRetry(_ operation: EditOperation) {
+        skippedOperationIDs.remove(operation.operationID)
+        unappliedOperations.removeAll { $0.operationID == operation.operationID }
+        conflicts.removeAll { conflict in
+            conflict.operationID == operation.operationID &&
+                (conflict.kind == .missingTarget || conflict.kind == .missingSource)
         }
     }
 

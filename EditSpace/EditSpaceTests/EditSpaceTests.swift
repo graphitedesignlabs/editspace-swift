@@ -151,6 +151,171 @@ private func operation(
     #expect(engine.pendingStoreOperationIDs == [create.operationID])
 }
 
+@Test func syncEngineAddsCausalDependenciesForLocalMutationsAndParents() {
+    let frameID = EntityID(rawValue: "frame")
+    let frame = EditOperation(
+        spaceID: spaceID,
+        actorID: ActorID(rawValue: "a"),
+        sequence: 1,
+        action: .create,
+        entity: .object,
+        targetID: frameID,
+        createdAt: nil
+    )
+    var engine = SyncEngine(spaceID: spaceID, operations: [frame])
+    let create = operation(
+        actor: "a",
+        sequence: 2,
+        action: .create,
+        fields: [SceneField.parentID.rawValue: .string(frameID.rawValue)]
+    )
+    let move = operation(
+        actor: "a",
+        sequence: 3,
+        action: .update,
+        fields: [SceneField.position.rawValue: .vector3(1, 2, 3)]
+    )
+    let laterMove = operation(
+        actor: "a",
+        sequence: 4,
+        action: .update,
+        fields: [SceneField.position.rawValue: .vector3(4, 5, 6)]
+    )
+
+    let prepared = engine.addingCausalDependencies(to: [create, move, laterMove])
+    #expect(prepared[0].dependencies.contains(frame.operationID))
+    #expect(prepared[1].dependencies.contains(create.operationID))
+    #expect(prepared[2].dependencies.contains(move.operationID))
+
+    _ = engine.appendLocal(contentsOf: prepared)
+    let state = engine.materialize()
+    #expect(state.skippedOperationIDs.isEmpty)
+    let reference = EntityReference(kind: .object, id: objectID)
+    #expect(state.visibleEntities[reference]?.fields[SceneField.position.rawValue] == .vector3(4, 5, 6))
+}
+
+@Test func causalDependenciesRepairTheNextMoveAfterLegacyUnchainedHistory() {
+    let create = operation(actor: "a", sequence: 1, action: .create)
+    let legacyMove = operation(
+        actor: "a",
+        sequence: 2,
+        action: .update,
+        fields: [SceneField.position.rawValue: .vector3(1, 2, 3)]
+    )
+    var engine = SyncEngine(spaceID: spaceID, operations: [create, legacyMove])
+    let finalMove = operation(
+        actor: "a",
+        sequence: 3,
+        action: .update,
+        fields: [SceneField.position.rawValue: .vector3(4, 5, 6)]
+    )
+
+    let prepared = engine.addingCausalDependencies(to: [finalMove])
+    #expect(prepared[0].dependencies.contains(create.operationID))
+    #expect(prepared[0].dependencies.contains(legacyMove.operationID))
+
+    _ = engine.appendLocal(contentsOf: prepared)
+    let reference = EntityReference(kind: .object, id: objectID)
+    #expect(engine.materialize().visibleEntities[reference]?.fields[SceneField.position.rawValue] == .vector3(4, 5, 6))
+}
+
+@Test func causalDependenciesCoverEveryEntityKindAndDuplicateSources() {
+    let actor = ActorID(rawValue: "a")
+    let modifierID = EntityID(rawValue: "modifier")
+    let modifierCreate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 1,
+        action: .create,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
+            SceneField.modifierType.rawValue: .string("smooth"),
+            SceneField.enabled.rawValue: .bool(true),
+            SceneField.order.rawValue: .number(0)
+        ],
+        createdAt: nil
+    )
+    let modifierUpdate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 2,
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
+            SceneField.enabled.rawValue: .bool(false)
+        ],
+        createdAt: nil
+    )
+    let engine = SyncEngine(spaceID: spaceID, operations: [modifierCreate, modifierUpdate])
+    let nextModifierUpdate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 3,
+        action: .update,
+        entity: .modifier,
+        targetID: modifierID,
+        fields: [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
+            SceneField.enabled.rawValue: .bool(true)
+        ],
+        createdAt: nil
+    )
+
+    let preparedUpdate = engine.addingCausalDependencies(to: [nextModifierUpdate])[0]
+    #expect(preparedUpdate.dependencies.contains(modifierCreate.operationID))
+    #expect(preparedUpdate.dependencies.contains(modifierUpdate.operationID))
+
+    let sourceID = EntityID(rawValue: "source")
+    let targetID = EntityID(rawValue: "copy")
+    let sourceCreate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 4,
+        action: .create,
+        entity: .mesh,
+        targetID: sourceID,
+        createdAt: nil
+    )
+    let sourceUpdate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 5,
+        action: .update,
+        entity: .mesh,
+        targetID: sourceID,
+        createdAt: nil
+    )
+    let meshEngine = SyncEngine(spaceID: spaceID, operations: [sourceCreate, sourceUpdate])
+    let duplicate = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 6,
+        action: .duplicate,
+        entity: .mesh,
+        targetID: targetID,
+        sourceID: sourceID,
+        createdAt: nil
+    )
+    let updateCopy = EditOperation(
+        spaceID: spaceID,
+        actorID: actor,
+        sequence: 7,
+        action: .update,
+        entity: .mesh,
+        targetID: targetID,
+        createdAt: nil
+    )
+
+    let prepared = meshEngine.addingCausalDependencies(to: [duplicate, updateCopy])
+    #expect(prepared[0].dependencies.contains(sourceCreate.operationID))
+    #expect(prepared[0].dependencies.contains(sourceUpdate.operationID))
+    #expect(prepared[1].dependencies.contains(duplicate.operationID))
+}
+
 @Test func sharedSpaceSceneFieldsValidate() {
     let transform = Value.matrix4([
         1, 0, 0, 0,
@@ -211,6 +376,68 @@ private func operation(
     #expect(!SceneFieldValidator.errors(for: malformedMesh).isEmpty)
 }
 
+@Test func requiredSceneFieldsAreEnforcedForEveryLifecycleAction() {
+    let actorID = ActorID(rawValue: "required-fields-test")
+    let completeCreateFields: [(EntityKind, [String: Value])] = [
+        (.vertex, [
+            SceneField.meshID.rawValue: .string("mesh"),
+            SceneField.position.rawValue: .vector3(0, 0, 0)
+        ]),
+        (.face, [
+            SceneField.meshID.rawValue: .string("mesh"),
+            SceneField.vertexIDs.rawValue: .array([
+                .string("vertex-1"), .string("vertex-2"), .string("vertex-3")
+            ])
+        ]),
+        (.modifier, [
+            SceneField.objectID.rawValue: .string("object"),
+            SceneField.modifierType.rawValue: .string("smooth"),
+            SceneField.enabled.rawValue: .bool(true),
+            SceneField.order.rawValue: .number(0)
+        ])
+    ]
+    var sequence: Int64 = 0
+
+    for (entity, createFields) in completeCreateFields {
+        for action in [OperationAction.create, .update, .delete] {
+            let requiredFields = SceneFieldValidator.requiredFields(for: entity, action: action)
+            let validFields = createFields.filter { requiredFields.contains($0.key) }
+            sequence += 1
+            let validOperation = EditOperation(
+                spaceID: spaceID,
+                actorID: actorID,
+                sequence: sequence,
+                action: action,
+                entity: entity,
+                targetID: EntityID(rawValue: "\(entity.rawValue)-\(action.rawValue)"),
+                fields: validFields,
+                createdAt: nil
+            )
+            #expect(SceneFieldValidator.errors(for: validOperation).isEmpty)
+
+            for missingField in requiredFields {
+                sequence += 1
+                var incompleteFields = validFields
+                incompleteFields.removeValue(forKey: missingField)
+                let invalidOperation = EditOperation(
+                    spaceID: spaceID,
+                    actorID: actorID,
+                    sequence: sequence,
+                    action: action,
+                    entity: entity,
+                    targetID: validOperation.targetID,
+                    fields: incompleteFields,
+                    createdAt: nil
+                )
+                let problems = CompatibilityPolicy().problems(for: invalidOperation)
+                #expect(problems.contains { problem in
+                    problem.kind == .invalidOperation && problem.message.contains(missingField)
+                })
+            }
+        }
+    }
+}
+
 @Test func generativeModifierVocabularyValidatesLifecycleOperations() {
     let modifierID = EntityID(rawValue: "generate-1")
     let worker = ActorID(rawValue: "worker")
@@ -242,7 +469,7 @@ private func operation(
         action: .update,
         entity: .modifier,
         targetID: modifierID,
-        fields: GenerativeModifierFields.claim(actorID: worker, claimID: claimID),
+        fields: GenerativeModifierFields.claim(objectID: objectID, actorID: worker, claimID: claimID),
         requiredFeatures: [.coreV1, .modifiersV1],
         createdAt: nil
     )
@@ -255,6 +482,7 @@ private func operation(
         entity: .modifier,
         targetID: modifierID,
         fields: GenerativeModifierFields.success(
+            objectID: objectID,
             claimID: claim.operationID,
             resultMeshID: EntityID(rawValue: "generated-mesh")
         ),
@@ -275,6 +503,7 @@ private func operation(
         entity: .modifier,
         targetID: modifierID,
         fields: GenerativeModifierFields.failure(
+            objectID: objectID,
             claimID: claim.operationID,
             error: "Generator could not produce a valid mesh"
         ) ?? [:],
@@ -291,6 +520,7 @@ private func operation(
         entity: .modifier,
         targetID: modifierID,
         fields: GenerativeModifierFields.claim(
+            objectID: objectID,
             actorID: ActorID(rawValue: "different-worker"),
             claimID: OperationID(actorID: worker, sequence: 3)
         ),
@@ -322,7 +552,7 @@ private func operation(
             action: .update,
             entity: .modifier,
             targetID: modifierID,
-            fields: GenerativeModifierFields.claim(actorID: actorID, claimID: claimID),
+            fields: GenerativeModifierFields.claim(objectID: objectID, actorID: actorID, claimID: claimID),
             createdAt: nil
         )
     }
@@ -413,6 +643,50 @@ private func operation(
     #expect(projectedFields[reference]?["x"] == .number(3))
 }
 
+@Test func replicaRecoversAnUpdateDeliveredBeforeItsCreate() {
+    let create = operation(
+        actor: "a",
+        sequence: 1,
+        action: .create,
+        fields: ["vertices": .array([.number(0), .number(1)])]
+    )
+    let update = operation(
+        actor: "a",
+        sequence: 2,
+        action: .update,
+        fields: ["vertices": .array([.number(0), .number(1), .number(2), .number(3)])]
+    )
+    var projectedVertices: Value?
+    var projectedOperationIDs: [OperationID] = []
+    let replica = Replica(spaceID: spaceID, bindings: ReplicaBindings(
+        create: { context in
+            projectedVertices = context.fields["vertices"]
+            if let operationID = context.operationID {
+                projectedOperationIDs.append(operationID)
+            }
+        },
+        update: { context, fields, _ in
+            projectedVertices = fields["vertices"] ?? projectedVertices
+            if let operationID = context.operationID {
+                projectedOperationIDs.append(operationID)
+            }
+        },
+        delete: { _ in },
+        setLink: { _, _, _ in }
+    ))
+
+    let earlyReport = replica.apply([update])
+    #expect(earlyReport.appliedOperationIDs.isEmpty)
+    #expect(replica.unappliedOperations == [update])
+    #expect(projectedVertices == nil)
+
+    let recoveryReport = replica.apply([create])
+    #expect(recoveryReport.appliedOperationIDs == [create.operationID, update.operationID])
+    #expect(replica.unappliedOperations.isEmpty)
+    #expect(projectedOperationIDs == [create.operationID, update.operationID])
+    #expect(projectedVertices == .array([.number(0), .number(1), .number(2), .number(3)]))
+}
+
 @Test func replicaMutationContextIncludesOriginAndResolvedEntity() {
     let create = operation(
         actor: "a",
@@ -477,7 +751,12 @@ private func operation(
         entity: .modifier,
         targetID: modifierID,
         sourceID: objectID,
-        fields: ["kind": .string("box")],
+        fields: [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
+            SceneField.modifierType.rawValue: .string("box"),
+            SceneField.enabled.rawValue: .bool(true),
+            SceneField.order.rawValue: .number(0)
+        ],
         arguments: ["sourceEntity": .string(EntityKind.object.rawValue)],
         createdAt: nil
     )

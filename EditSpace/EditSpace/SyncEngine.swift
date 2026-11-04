@@ -77,6 +77,80 @@ public struct SyncEngine: Sendable {
         materialize()
     }
 
+    /// Adds the causal edges required for locally-authored mutations to replay
+    /// after the entities they address. Call this before appending and sending a
+    /// newly constructed local batch.
+    public func addingCausalDependencies(
+        to operations: [EditOperation]
+    ) -> [EditOperation] {
+        var latestByEntity = [EntityReference: EditOperation]()
+        var latestCreatorByEntity = [EntityReference: EditOperation]()
+
+        func record(_ operation: EditOperation) {
+            guard let reference = operation.targetReference else { return }
+            if latestByEntity[reference].map({ $0.stamp < operation.stamp }) ?? true {
+                latestByEntity[reference] = operation
+            }
+            if operation.action == .create || operation.action == .duplicate,
+               latestCreatorByEntity[reference].map({ $0.stamp < operation.stamp }) ?? true {
+                latestCreatorByEntity[reference] = operation
+            }
+        }
+
+        for operation in operationLog.operations {
+            record(operation)
+        }
+
+        return operations.map { operation in
+            var dependencies = operation.dependencies
+            func add(_ dependency: OperationID?) {
+                guard let dependency, dependency != operation.operationID,
+                      !dependencies.contains(dependency) else { return }
+                dependencies.append(dependency)
+            }
+
+            if operation.action != .create && operation.action != .duplicate,
+               let reference = operation.targetReference {
+                add(latestCreatorByEntity[reference]?.operationID)
+                add(latestByEntity[reference]?.operationID)
+            }
+            if let sourceID = operation.sourceID {
+                let source = EntityReference(kind: operation.entity, id: sourceID)
+                add(latestCreatorByEntity[source]?.operationID)
+                add(latestByEntity[source]?.operationID)
+            }
+            if operation.entity == .object,
+               case .string(let parentID)? = operation.fields[SceneField.parentID.rawValue] {
+                let parent = EntityReference(
+                    kind: .object,
+                    id: EntityID(rawValue: parentID)
+                )
+                add(latestCreatorByEntity[parent]?.operationID)
+                add(latestByEntity[parent]?.operationID)
+            }
+
+            let prepared = EditOperation(
+                schemaVersion: operation.schemaVersion,
+                spaceID: operation.spaceID,
+                operationID: operation.operationID,
+                actorID: operation.actorID,
+                sequence: operation.sequence,
+                dependencies: dependencies,
+                action: operation.action,
+                entity: operation.entity,
+                targetID: operation.targetID,
+                sourceID: operation.sourceID,
+                fields: operation.fields,
+                arguments: operation.arguments,
+                requiredFeatures: operation.requiredFeatures,
+                producer: operation.producer,
+                createdAt: operation.createdAt
+            )
+            record(prepared)
+            return prepared
+        }
+    }
+
     @discardableResult
     public mutating func append(
         _ operations: [EditOperation],

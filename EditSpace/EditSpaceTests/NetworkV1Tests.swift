@@ -44,6 +44,33 @@ private func networkOperation(
     #expect(try NetworkV1DiscoveryRecord(txtData: record.encodedTXTData()) == record)
 }
 
+@Test func discoveryTXTAcceptsNamespacedApplicationCapabilities() throws {
+    let record = try NetworkV1DiscoveryRecord(
+        peerID: peerA,
+        capabilities: ["tcp", "history-ranges", "graphite.spatial.none"]
+    )
+
+    #expect(record.capabilities.contains("graphite.spatial.none"))
+    #expect(try NetworkV1DiscoveryRecord(txtData: record.encodedTXTData()) == record)
+}
+
+@Test func sessionHelloIncludesApplicationCapabilities() async throws {
+    let repository = NetworkV1Repository(spaces: [networkSpaceID])
+    let session = NetworkV1Session(
+        localPeerID: peerA,
+        localCapabilities: ["tcp", "history-ranges", "graphite.spatial.frames.v1"],
+        repository: repository,
+        selectedSpaces: [networkSpaceID]
+    )
+
+    let messages = await session.initialMessages()
+    guard case .hello(let hello) = messages.first else {
+        Issue.record("Expected a hello message")
+        return
+    }
+    #expect(hello.capabilities.contains("graphite.spatial.frames.v1"))
+}
+
 @Test func connectionSelectionUsesPeerThenSourcePort() {
     let wrongDirection = NetworkV1ConnectionCandidate(initiatorPeerID: peerB, initiatorPort: 49_152)
     let firstCorrect = NetworkV1ConnectionCandidate(initiatorPeerID: peerA, initiatorPort: 53_002)
@@ -102,6 +129,21 @@ private func networkOperation(
     #expect(object["instanceID"] as? String == "process-a")
     #expect(object["spaces"] as? [String] == [networkSpaceID.rawValue])
     #expect(try NetworkV1MessageCodec.decode(data) == .hello(hello))
+}
+
+@Test func liveOperationBatchEncodesNullRequestID() throws {
+    let batch = NetworkV1OperationBatch(
+        requestID: nil,
+        final: true,
+        spaceID: networkSpaceID,
+        envelopes: []
+    )
+    let data = try NetworkV1MessageCodec.encode(.operationBatch(batch))
+    let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+    #expect(object.keys.contains("requestID"))
+    #expect(object["requestID"] is NSNull)
+    #expect(try NetworkV1MessageCodec.decode(data) == .operationBatch(batch))
 }
 
 @Test func sessionHelloIncludesCurrentProcessInstance() async {
@@ -248,6 +290,28 @@ private func networkOperation(
     #expect(await repository.operations(in: networkSpaceID) == operations)
 }
 
+@Test func newDrawingResetRemovesPreviousSessionHistory() async {
+    let repository = NetworkV1Repository(spaces: [networkSpaceID])
+    let previousSessionOperation = networkOperation(
+        sequence: 1,
+        operationID: "previous-session",
+        name: "Previous drawing"
+    )
+    #expect(await repository.appendLocal(previousSessionOperation) == .appended)
+
+    await repository.removeAllHistory(keeping: [networkSpaceID])
+
+    #expect(await repository.operations(in: networkSpaceID).isEmpty)
+    #expect(await repository.spaces() == [networkSpaceID])
+    let newSessionOperation = networkOperation(
+        sequence: 1,
+        operationID: "new-session",
+        name: "New drawing"
+    )
+    #expect(await repository.appendLocal(newSessionOperation) == .appended)
+    #expect(await repository.operations(in: networkSpaceID) == [newSessionOperation])
+}
+
 @Test func twoSessionsNegotiateAndReconcileMissingHistory() async throws {
     let repositoryA = NetworkV1Repository(spaces: [networkSpaceID])
     let repositoryB = NetworkV1Repository(spaces: [networkSpaceID])
@@ -289,6 +353,47 @@ private func networkOperation(
         payload: Data("cube-1".utf8)
     )
     #expect(await sessionA.applicationMessage(application) == .application(application))
+}
+
+@Test func twoSessionsMergeDistinctHistoryThatPredatesConnection() async throws {
+    let repositoryA = NetworkV1Repository(spaces: [networkSpaceID])
+    let repositoryB = NetworkV1Repository(spaces: [networkSpaceID])
+    let operationA = networkOperation(actor: "artist-a", sequence: 1, name: "Cube from A")
+    let operationB = networkOperation(actor: "artist-b", sequence: 1, name: "Cube from B")
+    #expect(await repositoryA.appendLocal(operationA) == .appended)
+    #expect(await repositoryB.appendLocal(operationB) == .appended)
+
+    let sessionA = NetworkV1Session(
+        localPeerID: peerA,
+        expectedRemotePeerID: peerB,
+        repository: repositoryA,
+        selectedSpaces: [networkSpaceID]
+    )
+    let sessionB = NetworkV1Session(
+        localPeerID: peerB,
+        expectedRemotePeerID: peerA,
+        repository: repositoryB,
+        selectedSpaces: [networkSpaceID]
+    )
+
+    var toA = await sessionB.initialMessages()
+    var toB = await sessionA.initialMessages()
+    var iterations = 0
+    while (!toA.isEmpty || !toB.isEmpty) && iterations < 30 {
+        let inboundA = toA
+        let inboundB = toB
+        toA = []
+        toB = []
+        for message in inboundA { toB.append(contentsOf: try await sessionA.receive(message)) }
+        for message in inboundB { toA.append(contentsOf: try await sessionB.receive(message)) }
+        iterations += 1
+    }
+
+    let expectedHistory = [operationA, operationB]
+    #expect(await repositoryA.operations(in: networkSpaceID) == expectedHistory)
+    #expect(await repositoryB.operations(in: networkSpaceID) == expectedHistory)
+    #expect(await sessionA.state == .live)
+    #expect(await sessionB.state == .live)
 }
 
 @Test func liveSessionsReconcileHistoryAddedAfterHandshake() async throws {

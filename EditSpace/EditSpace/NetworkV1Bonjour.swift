@@ -46,6 +46,16 @@ public enum NetworkV1NodeEvent: Sendable {
     case error(NetworkV1ErrorMessage, from: NetworkPeerID?)
 }
 
+public struct NetworkV1PeerMetadata: Equatable, Sendable {
+    public let peerID: NetworkPeerID
+    public let capabilities: Set<String>
+
+    public init(peerID: NetworkPeerID, capabilities: [String]) {
+        self.peerID = peerID
+        self.capabilities = Set(capabilities)
+    }
+}
+
 public enum NetworkV1NodeError: Error, Sendable {
     case alreadyRunning
     case listenerFailed(String)
@@ -89,8 +99,10 @@ public final class NetworkV1Node: @unchecked Sendable {
     public let peerID: NetworkPeerID
     public let repository: NetworkV1Repository
     public let sharingName: String
+    public let capabilities: [String]
 
     private var selectedSpaces: Set<SpaceID>
+    private let peerMetadataHandler: @Sendable (NetworkV1PeerMetadata) -> Void
     private let eventHandler: @Sendable (NetworkV1NodeEvent) -> Void
     private let queue: DispatchQueue
     private var listener: NWListener?
@@ -110,11 +122,15 @@ public final class NetworkV1Node: @unchecked Sendable {
         repository: NetworkV1Repository,
         selectedSpaces: Set<SpaceID>,
         sharingName: String? = nil,
+        capabilities: [String] = ["application-messages", "dns-sd", "history-ranges", "tcp"],
+        peerMetadataHandler: @escaping @Sendable (NetworkV1PeerMetadata) -> Void = { _ in },
         eventHandler: @escaping @Sendable (NetworkV1NodeEvent) -> Void = { _ in }
     ) {
         self.peerID = peerID
         self.repository = repository
         self.selectedSpaces = selectedSpaces
+        self.capabilities = Array(Set(capabilities)).sorted()
+        self.peerMetadataHandler = peerMetadataHandler
         self.sharingName = NetworkV1SharingName.sanitized(
             sharingName ?? NetworkV1SharingName.currentDeviceName
         )
@@ -138,6 +154,7 @@ public final class NetworkV1Node: @unchecked Sendable {
             domain: Self.serviceDomain,
             txtRecord: try? NetworkV1DiscoveryRecord(
                 peerID: peerID,
+                capabilities: capabilities.filter { $0 != "dns-sd" },
                 instanceID: localInstanceID,
                 sharingName: sharingName
             ).encodedTXTData()
@@ -382,6 +399,7 @@ public final class NetworkV1Node: @unchecked Sendable {
         let session = NetworkV1Session(
             localPeerID: peerID,
             localInstanceID: localInstanceID,
+            localCapabilities: capabilities,
             expectedRemotePeerID: expectedPeerID,
             repository: repository,
             selectedSpaces: selectedSpaces
@@ -392,6 +410,10 @@ public final class NetworkV1Node: @unchecked Sendable {
         link.onIdentified = { [weak self, weak link] hello in
             guard let self, let link else { return false }
             let remotePeerID = hello.peerID
+            self.peerMetadataHandler(NetworkV1PeerMetadata(
+                peerID: remotePeerID,
+                capabilities: hello.capabilities
+            ))
             let correctDirection = outbound ? self.peerID < remotePeerID : self.peerID > remotePeerID
             guard correctDirection else { return false }
             var replacedProcess = false

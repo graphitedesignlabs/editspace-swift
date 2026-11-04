@@ -229,6 +229,21 @@ public struct NetworkV1OperationBatch: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case kind, schemaVersion = "v", requestID, final, spaceID = "doc", envelopes
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        if let requestID {
+            try container.encode(requestID, forKey: .requestID)
+        } else {
+            // Network v1 requires the member even for unsolicited live batches.
+            try container.encodeNil(forKey: .requestID)
+        }
+        try container.encode(final, forKey: .final)
+        try container.encode(spaceID, forKey: .spaceID)
+        try container.encode(envelopes, forKey: .envelopes)
+    }
 }
 
 public struct NetworkV1SyncComplete: Codable, Equatable, Sendable {

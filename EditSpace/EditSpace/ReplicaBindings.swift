@@ -161,6 +161,12 @@ public final class Replica {
     public var conflicts: [Conflict] { state.conflicts }
     public var unappliedOperations: [EditOperation] { state.unappliedOperations }
 
+    /// Exposes resolved entity state for projection diagnostics and guarded
+    /// recovery without requiring a full replica replay.
+    public func entity(kind: EntityKind, id: EntityID) -> EntityState? {
+        state.entity(kind: kind, id: id)
+    }
+
     /// Resolves a batch and invokes the attached functions only for visible changes.
     @discardableResult
     public func apply(_ operations: [EditOperation]) -> ReplicaApplicationReport {
@@ -234,13 +240,14 @@ public extension Materializer {
         var appliedOperationIDs: [OperationID] = []
         var failures: [ReplicaApplicationFailure] = []
 
-        for operation in Self.orderedOperations(operations) {
+        func applyAndProject(_ operation: EditOperation) -> Bool {
+            let wasApplied = state.appliedOperationIDs.contains(operation.operationID)
             let before = state.visibleEntities
             materialize(operations: [operation], onto: &state)
             let after = state.visibleEntities
 
-            guard state.appliedOperationIDs.contains(operation.operationID) else {
-                continue
+            guard !wasApplied, state.appliedOperationIDs.contains(operation.operationID) else {
+                return false
             }
             appliedOperationIDs.append(operation.operationID)
             emitChanges(
@@ -250,6 +257,35 @@ public extension Materializer {
                 using: bindings,
                 failures: &failures
             )
+            return true
+        }
+
+        for operation in Self.orderedOperations(operations) {
+            _ = applyAndProject(operation)
+        }
+
+        // Network delivery is allowed to split and reorder accepted operations.
+        // Retry only failures that can become valid when their target or source
+        // arrives, continuing until a pass makes no progress so dependency chains
+        // recover without replaying the complete permanent history.
+        while true {
+            let pending = Self.orderedOperations(state.transientlyUnappliedOperations)
+            guard !pending.isEmpty else { break }
+
+            var recoveredCount = 0
+            for operation in pending {
+                state.prepareTransientRetry(operation)
+                if applyAndProject(operation) {
+                    recoveredCount += 1
+                    EditSpaceInstrumentation.log(
+                        "replica.pendingRecovered",
+                        keywords: ["replica", "dependency", "network"],
+                        "space=\(state.spaceID.rawValue) op=\(operation.operationID.rawValue) action=\(operation.action.rawValue) entity=\(operation.entity.rawValue)"
+                    )
+                }
+            }
+
+            guard recoveredCount > 0 else { break }
         }
 
         return ReplicaApplicationReport(

@@ -27,6 +27,7 @@ public actor NetworkV1Session {
     private let selectedSpaces: Set<SpaceID>
     private let expectedRemotePeerID: NetworkPeerID?
     private let localInstanceID: String?
+    private let localCapabilities: [String]
     private var remoteHello: NetworkV1Hello?
     private var sentSelection: NetworkV1SpaceSelection?
     private var remoteSelection: NetworkV1SpaceSelection?
@@ -39,12 +40,14 @@ public actor NetworkV1Session {
     public init(
         localPeerID: NetworkPeerID,
         localInstanceID: String? = nil,
+        localCapabilities: [String] = ["application-messages", "dns-sd", "history-ranges", "tcp"],
         expectedRemotePeerID: NetworkPeerID? = nil,
         repository: NetworkV1Repository,
         selectedSpaces: Set<SpaceID>
     ) {
         self.localPeerID = localPeerID
         self.localInstanceID = localInstanceID
+        self.localCapabilities = Array(Set(localCapabilities)).sorted()
         self.expectedRemotePeerID = expectedRemotePeerID
         self.repository = repository
         self.selectedSpaces = selectedSpaces
@@ -54,6 +57,7 @@ public actor NetworkV1Session {
         [.hello(NetworkV1Hello(
             peerID: localPeerID,
             instanceID: localInstanceID,
+            capabilities: localCapabilities,
             spaces: await repository.spaces()
         ))]
     }

@@ -60,8 +60,13 @@ public enum GenerativeModifierFields {
     }
 
     /// A complete claim patch. `claimID` must be the ID of the operation carrying this patch.
-    public static func claim(actorID: ActorID, claimID: OperationID) -> [String: Value] {
+    public static func claim(
+        objectID: EntityID,
+        actorID: ActorID,
+        claimID: OperationID
+    ) -> [String: Value] {
         [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
             SceneField.status.rawValue: .string(GenerativeModifierStatus.running.rawValue),
             SceneField.claimant.rawValue: .string(actorID.rawValue),
             SceneField.claimID.rawValue: .string(claimID.rawValue),
@@ -72,8 +77,13 @@ public enum GenerativeModifierFields {
     }
 
     /// A successful terminal response. The carrying operation must depend on the claim.
-    public static func success(claimID: OperationID, resultMeshID: EntityID) -> [String: Value] {
+    public static func success(
+        objectID: EntityID,
+        claimID: OperationID,
+        resultMeshID: EntityID
+    ) -> [String: Value] {
         [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
             SceneField.status.rawValue: .string(GenerativeModifierStatus.done.rawValue),
             SceneField.responseToClaimID.rawValue: .string(claimID.rawValue),
             SceneField.resultMeshID.rawValue: .string(resultMeshID.rawValue),
@@ -82,9 +92,14 @@ public enum GenerativeModifierFields {
     }
 
     /// A failed terminal response. Returns nil for an empty diagnostic message.
-    public static func failure(claimID: OperationID, error: String) -> [String: Value]? {
+    public static func failure(
+        objectID: EntityID,
+        claimID: OperationID,
+        error: String
+    ) -> [String: Value]? {
         guard !error.isEmpty else { return nil }
         return [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
             SceneField.status.rawValue: .string(GenerativeModifierStatus.failed.rawValue),
             SceneField.responseToClaimID.rawValue: .string(claimID.rawValue),
             SceneField.resultMeshID.rawValue: .null,
@@ -93,8 +108,9 @@ public enum GenerativeModifierFields {
     }
 
     /// Clears claim and response bookkeeping before a retry or semantic-input change.
-    public static var reset: [String: Value] {
+    public static func reset(objectID: EntityID) -> [String: Value] {
         [
+            SceneField.objectID.rawValue: .string(objectID.rawValue),
             SceneField.status.rawValue: .string(GenerativeModifierStatus.pending.rawValue),
             SceneField.claimant.rawValue: .null,
             SceneField.claimID.rawValue: .null,

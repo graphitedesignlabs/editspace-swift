@@ -69,7 +69,7 @@ public struct CompatibilityPolicy: Sendable {
     public static let defaultSupportedFeatures: Set<Feature> = [
         .coreV1, .scene3DV1, .meshV1, .modifiersV1, .pbrMaterialV1,
         .crudV1, .duplicateV1, .linkedDuplicateV1, .dependencyGraphV1,
-        .presenceV1, .legacySnapshotV1
+        .presenceV1, .spatialFramesV1, .legacySnapshotV1
     ]
 
     public func problems(for operation: EditOperation, expectedSpaceID: SpaceID? = nil) -> [CompatibilityProblem] {
@@ -114,6 +114,33 @@ public struct CompatibilityPolicy: Sendable {
 
 /// Validates the standardized EditSpace v1 3D field shapes that JSON typing alone cannot express.
 public enum SceneFieldValidator {
+    /// Fields that must be carried by an operation, rather than merely existing
+    /// in previously materialized state. Child ownership is required on every
+    /// lifecycle mutation; the remaining fields are required when creating it.
+    public static func requiredFields(
+        for entity: EntityKind,
+        action: OperationAction
+    ) -> [String] {
+        guard [.create, .update, .delete].contains(action) else { return [] }
+        switch entity {
+        case .vertex:
+            return [SceneField.meshID.rawValue]
+                + (action == .create ? [SceneField.position.rawValue] : [])
+        case .face:
+            return [SceneField.meshID.rawValue]
+                + (action == .create ? [SceneField.vertexIDs.rawValue] : [])
+        case .modifier:
+            return [SceneField.objectID.rawValue]
+                + (action == .create ? [
+                    SceneField.modifierType.rawValue,
+                    SceneField.enabled.rawValue,
+                    SceneField.order.rawValue
+                ] : [])
+        default:
+            return []
+        }
+    }
+
     public static func errors(for operation: EditOperation) -> [String] {
         let fields = operation.fields
         var errors: [String] = []
@@ -128,6 +155,15 @@ public enum SceneFieldValidator {
             }
             if !number.isFinite || !(0...1).contains(number) { errors.append("Field \(key) must be in 0...1") }
         }
+        func requireIdentifier(_ key: String) {
+            guard let value = fields[key] else { return }
+            if value.stringValue?.isEmpty != false { errors.append("Field \(key) must be a non-empty identifier") }
+        }
+
+        for key in requiredFields(for: operation.entity, action: operation.action)
+        where fields[key] == nil || fields[key] == .null {
+            errors.append("A \(operation.action.rawValue) \(operation.entity.rawValue) operation requires field \(key)")
+        }
 
         switch operation.entity {
         case .object:
@@ -138,10 +174,22 @@ public enum SceneFieldValidator {
             requireVector(SceneField.quaternion.rawValue, count: 4)
             requireVector(SceneField.scale.rawValue, count: 3)
             requireUnitInterval(SceneField.opacity.rawValue)
+            errors.append(contentsOf: spatialFrameErrors(operation))
         case .mesh:
             errors.append(contentsOf: meshErrors(fields))
         case .vertex:
+            requireIdentifier(SceneField.meshID.rawValue)
             requireVector(SceneField.position.rawValue, count: 3)
+        case .face:
+            requireIdentifier(SceneField.meshID.rawValue)
+            if let value = fields[SceneField.vertexIDs.rawValue] {
+                guard let vertexIDs = value.arrayValue,
+                      vertexIDs.count >= 3,
+                      vertexIDs.allSatisfy({ $0.stringValue?.isEmpty == false }) else {
+                    errors.append("Field vertexIDs must contain at least three non-empty identifiers")
+                    break
+                }
+            }
         case .material:
             for key in [SceneField.baseColor.rawValue, "emissiveColor"] {
                 guard let value = fields[key] else { continue }
@@ -151,9 +199,64 @@ public enum SceneFieldValidator {
             requireUnitInterval(SceneField.roughness.rawValue)
             requireUnitInterval(SceneField.opacity.rawValue)
         case .modifier:
+            requireIdentifier(SceneField.objectID.rawValue)
+            if let value = fields[SceneField.modifierType.rawValue], value.stringValue?.isEmpty != false {
+                errors.append("Field modifierType must be a non-empty token")
+            }
+            if let value = fields[SceneField.enabled.rawValue], value.boolValue == nil {
+                errors.append("Field enabled must be a boolean")
+            }
+            if let value = fields[SceneField.order.rawValue], !isNonNegativeInteger(value) {
+                errors.append("Field order must be a non-negative integer")
+            }
             errors.append(contentsOf: generativeModifierErrors(operation))
         default:
             break
+        }
+        return errors
+    }
+
+    private static func spatialFrameErrors(_ operation: EditOperation) -> [String] {
+        let fields = operation.fields
+        guard let objectType = fields[SceneField.objectType.rawValue]?.stringValue,
+              objectType == SpatialFrameProfile.frameObjectType
+                || objectType == SpatialFrameProfile.frameLinkObjectType else { return [] }
+
+        var errors: [String] = []
+        if operation.action != .create {
+            errors.append("Spatial frames and frame links are immutable create records")
+        }
+        if operation.createdAt == nil {
+            errors.append("A spatial frame record requires createdAt")
+        }
+        if !operation.requiredFeatures.contains(.spatialFramesV1) {
+            errors.append("A spatial frame record requires spatialFrames.v1")
+        }
+        if fields[SceneField.parentID.rawValue] != .null {
+            errors.append("A spatial frame record requires null parentID")
+        }
+        if fields[SceneField.transform.rawValue] != .matrix(SpatialMatrix.identity.values) {
+            errors.append("A spatial frame record requires identity transform")
+        }
+
+        guard objectType == SpatialFrameProfile.frameLinkObjectType else { return errors }
+        if fields[SceneField.visible.rawValue] != .bool(false) {
+            errors.append("A frame link requires visible false")
+        }
+        for field in [SceneField.frameA, .frameB] {
+            if fields[field.rawValue]?.stringValue?.isEmpty != false {
+                errors.append("A frame link requires \(field.rawValue)")
+            }
+        }
+        if let value = fields[SceneField.bInA.rawValue] {
+            if !isNumberArray(value, count: 16) {
+                errors.append("A frame link bInA must contain exactly 16 finite numbers")
+            }
+        } else {
+            errors.append("A frame link requires bInA")
+        }
+        if fields[SceneField.alignmentMethod.rawValue]?.stringValue?.isEmpty != false {
+            errors.append("A frame link requires alignmentMethod")
         }
         return errors
     }
