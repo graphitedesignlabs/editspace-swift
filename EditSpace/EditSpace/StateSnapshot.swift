@@ -6,7 +6,7 @@ import Foundation
 /// replaying the transaction history that produced them.
 public struct StateSnapshot: Codable, Equatable, Sendable {
     public static let kind = "editspace-state-snapshot"
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let kind: String
     public let schemaVersion: Int
@@ -40,6 +40,15 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
         )
     }
 
+    /// Joins two snapshots of the same space without replaying their operation
+    /// histories. The result is deterministic, commutative, associative, and
+    /// idempotent for snapshots produced from valid EditSpace replicas.
+    public func merging(_ other: StateSnapshot) throws -> StateSnapshot {
+        var state = SpaceState(snapshot: self)
+        try state.merge(other)
+        return StateSnapshot(state: state)
+    }
+
     private init(
         kind: String,
         schemaVersion: Int,
@@ -65,22 +74,30 @@ public struct StateSnapshot: Codable, Equatable, Sendable {
 public struct StateSnapshotEntity: Codable, Equatable, Sendable {
     public let reference: EntityReference
     public let sourceID: EntityID?
+    public let sourceRegister: EntityIDRegister?
     public let fieldRegisters: [String: FieldRegister]
     public let arguments: [String: Value]
+    public let argumentRegisters: [String: FieldRegister]?
     public let links: [EntityReference]
+    public let linkRegisters: [EntityReference: LinkRegister]?
     public let createdBy: OperationID
     public let creationStamp: OperationStamp
     public let updatedBy: OperationID
+    public let updatedStamp: OperationStamp?
 
     public init(_ entity: EntityState) {
         self.reference = entity.reference
         self.sourceID = entity.sourceID
+        self.sourceRegister = entity.sourceRegister
         self.fieldRegisters = entity.fieldRegisters
         self.arguments = entity.arguments
+        self.argumentRegisters = entity.argumentRegisters
         self.links = entity.links.sorted()
+        self.linkRegisters = entity.linkRegisters
         self.createdBy = entity.createdBy
         self.creationStamp = entity.creationStamp
         self.updatedBy = entity.updatedBy
+        self.updatedStamp = entity.updatedStamp
     }
 }
 
@@ -113,4 +130,8 @@ public enum StateSnapshotCodec {
         }
         return snapshot
     }
+}
+
+public enum SnapshotJoinError: Error, Equatable, Sendable {
+    case spaceMismatch(expected: SpaceID, actual: SpaceID)
 }

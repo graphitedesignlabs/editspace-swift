@@ -10,15 +10,36 @@ public struct FieldRegister: Codable, Equatable, Sendable {
     }
 }
 
+public struct EntityIDRegister: Codable, Equatable, Sendable {
+    public let value: EntityID?
+    public let stamp: OperationStamp
+
+    public init(value: EntityID?, stamp: OperationStamp) {
+        self.value = value
+        self.stamp = stamp
+    }
+}
+
+public struct LinkRegister: Codable, Equatable, Sendable {
+    public let isLinked: Bool
+    public let stamp: OperationStamp
+
+    public init(isLinked: Bool, stamp: OperationStamp) {
+        self.isLinked = isLinked
+        self.stamp = stamp
+    }
+}
+
 public struct EntityState: Equatable, Sendable {
     public let reference: EntityReference
-    public private(set) var sourceID: EntityID?
+    public private(set) var sourceRegister: EntityIDRegister?
     public private(set) var fieldRegisters: [String: FieldRegister]
-    public private(set) var arguments: [String: Value]
-    public private(set) var links: Set<EntityReference>
+    public private(set) var argumentRegisters: [String: FieldRegister]
+    public private(set) var linkRegisters: [EntityReference: LinkRegister]
     public let createdBy: OperationID
     public let creationStamp: OperationStamp
     public private(set) var updatedBy: OperationID
+    public private(set) var updatedStamp: OperationStamp
 
     public init(reference: EntityReference,
                 sourceID: EntityID? = nil,
@@ -27,62 +48,192 @@ public struct EntityState: Equatable, Sendable {
                 createdBy operation: EditOperation) {
         let stamp = operation.stamp
         self.reference = reference
-        self.sourceID = sourceID
+        self.sourceRegister = sourceID.map {
+            EntityIDRegister(value: $0, stamp: stamp)
+        }
         self.fieldRegisters = fields.mapValues { FieldRegister(value: $0, stamp: stamp) }
-        self.arguments = arguments
-        self.links = []
+        self.argumentRegisters = arguments.mapValues {
+            FieldRegister(value: $0, stamp: stamp)
+        }
+        self.linkRegisters = [:]
         self.createdBy = operation.operationID
-        self.creationStamp = operation.stamp
+        self.creationStamp = stamp
         self.updatedBy = operation.operationID
+        self.updatedStamp = stamp
     }
 
     init(snapshot: StateSnapshotEntity) {
         self.reference = snapshot.reference
-        self.sourceID = snapshot.sourceID
+        self.sourceRegister = snapshot.sourceRegister
+            ?? snapshot.sourceID.map {
+                EntityIDRegister(
+                    value: $0,
+                    stamp: snapshot.updatedStamp ?? snapshot.creationStamp
+                )
+            }
         self.fieldRegisters = snapshot.fieldRegisters
-        self.arguments = snapshot.arguments
-        self.links = Set(snapshot.links)
+        self.argumentRegisters = snapshot.argumentRegisters
+            ?? snapshot.arguments.mapValues {
+                FieldRegister(
+                    value: $0,
+                    stamp: snapshot.updatedStamp ?? snapshot.creationStamp
+                )
+            }
+        self.linkRegisters = snapshot.linkRegisters
+            ?? Dictionary(
+                uniqueKeysWithValues: snapshot.links.map {
+                    (
+                        $0,
+                        LinkRegister(
+                            isLinked: true,
+                            stamp: snapshot.updatedStamp ?? snapshot.creationStamp
+                        )
+                    )
+                }
+            )
         self.createdBy = snapshot.createdBy
         self.creationStamp = snapshot.creationStamp
         self.updatedBy = snapshot.updatedBy
+        self.updatedStamp = snapshot.updatedStamp ?? snapshot.creationStamp
     }
+
+    public var sourceID: EntityID? { sourceRegister?.value }
 
     public var fields: [String: Value] {
         fieldRegisters.mapValues(\.value)
     }
 
+    public var arguments: [String: Value] {
+        argumentRegisters.mapValues(\.value)
+    }
+
+    public var links: Set<EntityReference> {
+        Set(linkRegisters.compactMap { reference, register in
+            register.isLinked ? reference : nil
+        })
+    }
+
     mutating func updateFields(_ fields: [String: Value], with operation: EditOperation) {
         let stamp = operation.stamp
+        var changed = false
         for (key, value) in fields {
             if let existing = fieldRegisters[key], stamp < existing.stamp {
                 continue
             }
             fieldRegisters[key] = FieldRegister(value: value, stamp: stamp)
+            changed = true
         }
-        updatedBy = operation.operationID
+        if changed { recordUpdate(operation) }
     }
 
     mutating func updateArguments(_ arguments: [String: Value], with operation: EditOperation) {
+        let stamp = operation.stamp
+        var changed = false
         for (key, value) in arguments {
-            self.arguments[key] = value
+            if let existing = argumentRegisters[key], stamp < existing.stamp {
+                continue
+            }
+            argumentRegisters[key] = FieldRegister(value: value, stamp: stamp)
+            changed = true
         }
-        updatedBy = operation.operationID
+        if changed { recordUpdate(operation) }
     }
 
     mutating func setSourceID(_ sourceID: EntityID?, with operation: EditOperation) {
-        self.sourceID = sourceID
-        updatedBy = operation.operationID
+        let stamp = operation.stamp
+        if let existing = sourceRegister, stamp < existing.stamp {
+            return
+        }
+        sourceRegister = EntityIDRegister(value: sourceID, stamp: stamp)
+        recordUpdate(operation)
     }
 
     mutating func addLink(_ reference: EntityReference, with operation: EditOperation) {
-        links.insert(reference)
-        updatedBy = operation.operationID
+        setLink(reference, isLinked: true, with: operation)
     }
 
     mutating func removeLink(_ reference: EntityReference, with operation: EditOperation) {
-        links.remove(reference)
-        updatedBy = operation.operationID
+        setLink(reference, isLinked: false, with: operation)
     }
+
+    func merging(_ other: EntityState) -> EntityState {
+        precondition(reference == other.reference)
+        guard creationStamp == other.creationStamp else {
+            return creationStamp < other.creationStamp ? other : self
+        }
+
+        var merged = self
+        merged.sourceRegister = Self.newest(sourceRegister, other.sourceRegister)
+        merged.fieldRegisters = Self.merging(fieldRegisters, other.fieldRegisters)
+        merged.argumentRegisters = Self.merging(argumentRegisters, other.argumentRegisters)
+        merged.linkRegisters = Self.merging(linkRegisters, other.linkRegisters)
+        if merged.updatedStamp < other.updatedStamp {
+            merged.updatedStamp = other.updatedStamp
+            merged.updatedBy = other.updatedBy
+        }
+        return merged
+    }
+
+    private mutating func setLink(
+        _ reference: EntityReference,
+        isLinked: Bool,
+        with operation: EditOperation
+    ) {
+        let stamp = operation.stamp
+        if let existing = linkRegisters[reference], stamp < existing.stamp {
+            return
+        }
+        linkRegisters[reference] = LinkRegister(isLinked: isLinked, stamp: stamp)
+        recordUpdate(operation)
+    }
+
+    private mutating func recordUpdate(_ operation: EditOperation) {
+        guard !(operation.stamp < updatedStamp) else { return }
+        updatedBy = operation.operationID
+        updatedStamp = operation.stamp
+    }
+
+    private static func newest<T>(
+        _ first: T?,
+        _ second: T?
+    ) -> T? where T: SnapshotRegister {
+        guard let first else { return second }
+        guard let second else { return first }
+        return first.registerStamp < second.registerStamp ? second : first
+    }
+
+    private static func merging<Key: Hashable, Register: SnapshotRegister>(
+        _ first: [Key: Register],
+        _ second: [Key: Register]
+    ) -> [Key: Register] {
+        var result = first
+        for (key, candidate) in second {
+            guard let existing = result[key] else {
+                result[key] = candidate
+                continue
+            }
+            if existing.registerStamp < candidate.registerStamp {
+                result[key] = candidate
+            }
+        }
+        return result
+    }
+}
+
+private protocol SnapshotRegister {
+    var registerStamp: OperationStamp { get }
+}
+
+extension FieldRegister: SnapshotRegister {
+    fileprivate var registerStamp: OperationStamp { stamp }
+}
+
+extension EntityIDRegister: SnapshotRegister {
+    fileprivate var registerStamp: OperationStamp { stamp }
+}
+
+extension LinkRegister: SnapshotRegister {
+    fileprivate var registerStamp: OperationStamp { stamp }
 }
 
 public struct Tombstone: Equatable, Sendable {
@@ -177,6 +328,32 @@ public struct SpaceState: Equatable, Sendable {
         self.appliedOperationIDs = Set(snapshot.appliedOperationIDs)
         self.skippedOperationIDs = []
         self.unappliedOperations = []
+    }
+
+    public mutating func merge(_ snapshot: StateSnapshot) throws {
+        guard snapshot.spaceID == spaceID else {
+            throw SnapshotJoinError.spaceMismatch(expected: spaceID, actual: snapshot.spaceID)
+        }
+
+        for snapshotEntity in snapshot.entities {
+            let incoming = EntityState(snapshot: snapshotEntity)
+            if let existing = entities[incoming.reference] {
+                entities[incoming.reference] = existing.merging(incoming)
+            } else {
+                entities[incoming.reference] = incoming
+            }
+        }
+
+        for snapshotTombstone in snapshot.tombstones {
+            let incoming = Tombstone(snapshot: snapshotTombstone)
+            if let existing = tombstones[incoming.reference],
+               !(existing.stamp < incoming.stamp) {
+                continue
+            }
+            tombstones[incoming.reference] = incoming
+        }
+
+        appliedOperationIDs.formUnion(snapshot.appliedOperationIDs)
     }
 
     public var visibleEntities: [EntityReference: EntityState] {

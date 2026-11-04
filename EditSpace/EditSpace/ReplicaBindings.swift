@@ -196,9 +196,46 @@ public final class Replica {
         guard snapshot.spaceID == spaceID else { return ReplicaApplicationReport() }
         return materializer.replace(&state, with: snapshot, using: bindings)
     }
+
+    /// Joins a snapshot into the current replica and projects only the winning
+    /// changes. Applying the same snapshot repeatedly is projection-idempotent.
+    @discardableResult
+    public func merge(_ snapshot: StateSnapshot) -> ReplicaApplicationReport {
+        guard snapshot.spaceID == spaceID else { return ReplicaApplicationReport() }
+        return materializer.merge(&state, with: snapshot, using: bindings)
+    }
 }
 
 public extension Materializer {
+    func merge(
+        _ state: inout SpaceState,
+        with snapshot: StateSnapshot,
+        using bindings: ReplicaBindings
+    ) -> ReplicaApplicationReport {
+        let previousEntities = state.visibleEntities
+        let previousOperationIDs = state.appliedOperationIDs
+        do {
+            try state.merge(snapshot)
+        } catch {
+            return ReplicaApplicationReport()
+        }
+
+        var failures: [ReplicaApplicationFailure] = []
+        emitChanges(
+            from: previousEntities,
+            to: state.visibleEntities,
+            operation: nil,
+            using: bindings,
+            failures: &failures
+        )
+        return ReplicaApplicationReport(
+            appliedOperationIDs: Array(
+                state.appliedOperationIDs.subtracting(previousOperationIDs)
+            ).sorted(),
+            failures: failures
+        )
+    }
+
     func replace(
         _ state: inout SpaceState,
         with snapshot: StateSnapshot,
@@ -371,10 +408,15 @@ public extension Materializer {
     private func emitChanges(
         from before: [EntityReference: EntityState],
         to after: [EntityReference: EntityState],
-        operation: EditOperation,
+        operation: EditOperation?,
         using bindings: ReplicaBindings,
         failures: inout [ReplicaApplicationFailure]
     ) {
+        let operationID = operation?.operationID
+        let operationDescription = operationID?.rawValue ?? "snapshot-join"
+        let actionDescription = operation?.action.rawValue ?? "merge"
+        let sequenceDescription = operation.map { String($0.sequence) } ?? "snapshot"
+        let spaceDescription = operation?.spaceID.rawValue ?? "attached"
         let references = Set(before.keys).union(after.keys).sorted()
         for reference in references {
             switch (before[reference], after[reference]) {
@@ -382,15 +424,15 @@ public extension Materializer {
                 EditSpaceInstrumentation.log(
                     "replica.visibilityCreate",
                     keywords: ["replica", "projection", "visibility", "crud"],
-                    "space=\(operation.spaceID.rawValue) op=\(operation.operationID.rawValue) action=\(operation.action.rawValue) entity=\(reference.description) sequence=\(operation.sequence)",
+                    "space=\(spaceDescription) op=\(operationDescription) action=\(actionDescription) entity=\(reference.description) sequence=\(sequenceDescription)",
                     level: .info
                 )
                 let context = mutationContext(operation: operation, entity: entity)
-                perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                perform(reference: reference, operationID: operationID, failures: &failures) {
                     try bindings.create(context)
                 }
                 for linkedReference in entity.links.sorted() {
-                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
                         try bindings.setLink(context, linkedReference, true)
                     }
                 }
@@ -399,33 +441,48 @@ public extension Materializer {
                 EditSpaceInstrumentation.log(
                     "replica.visibilityDelete",
                     keywords: ["replica", "projection", "visibility", "crud"],
-                    "space=\(operation.spaceID.rawValue) op=\(operation.operationID.rawValue) action=\(operation.action.rawValue) entity=\(reference.description) sequence=\(operation.sequence)",
+                    "space=\(spaceDescription) op=\(operationDescription) action=\(actionDescription) entity=\(reference.description) sequence=\(sequenceDescription)",
                     level: .info
                 )
                 let context = mutationContext(operation: operation, entity: previous)
-                perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                perform(reference: reference, operationID: operationID, failures: &failures) {
                     try bindings.delete(context)
                 }
 
             case (let previous?, let current?):
                 let context = mutationContext(operation: operation, entity: current)
+                if previous.creationStamp != current.creationStamp {
+                    let previousContext = mutationContext(operation: operation, entity: previous)
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
+                        try bindings.delete(previousContext)
+                    }
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
+                        try bindings.create(context)
+                    }
+                    for linkedReference in current.links.sorted() {
+                        perform(reference: reference, operationID: operationID, failures: &failures) {
+                            try bindings.setLink(context, linkedReference, true)
+                        }
+                    }
+                    continue
+                }
                 let changedFields = current.fields.filter { previous.fields[$0.key] != $0.value }
                 let changedArguments = current.arguments.filter {
                     previous.arguments[$0.key] != $0.value
                 }
                 if !changedFields.isEmpty || !changedArguments.isEmpty {
-                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
                         try bindings.update(context, changedFields, changedArguments)
                     }
                 }
 
                 for linkedReference in current.links.subtracting(previous.links).sorted() {
-                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
                         try bindings.setLink(context, linkedReference, true)
                     }
                 }
                 for linkedReference in previous.links.subtracting(current.links).sorted() {
-                    perform(reference: reference, operationID: operation.operationID, failures: &failures) {
+                    perform(reference: reference, operationID: operationID, failures: &failures) {
                         try bindings.setLink(context, linkedReference, false)
                     }
                 }
@@ -437,7 +494,7 @@ public extension Materializer {
     }
 
     private func mutationContext(
-        operation: EditOperation,
+        operation: EditOperation?,
         entity: EntityState
     ) -> ReplicaMutationContext {
         ReplicaMutationContext(
