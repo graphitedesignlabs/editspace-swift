@@ -37,6 +37,31 @@ private func snapshot(_ operations: [EditOperation]) -> StateSnapshot {
     )
 }
 
+@Test func replicaExportsCurrentSnapshot() {
+    let create = joinOperation(
+        actor: "actor",
+        sequence: 1,
+        action: .create,
+        fields: ["name": .string("Cube")]
+    )
+    let replica = Replica(
+        spaceID: joinSpaceID,
+        bindings: ReplicaBindings(
+            create: { _ in },
+            update: { _, _, _ in },
+            delete: { _ in },
+            setLink: { _, _, _ in }
+        )
+    )
+
+    replica.apply([create])
+    let exported = replica.snapshot()
+
+    #expect(exported.spaceID == joinSpaceID)
+    #expect(exported.appliedOperationIDs == [create.operationID])
+    #expect(exported.entities.first?.reference.id == joinObjectID)
+}
+
 @Test func snapshotJoinIsCommutativeAssociativeAndIdempotent() throws {
     let create = joinOperation(
         actor: "origin",

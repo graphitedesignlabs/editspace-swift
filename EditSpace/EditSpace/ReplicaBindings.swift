@@ -189,6 +189,11 @@ public final class Replica {
         materializer.replay(state, using: bindings)
     }
 
+    /// Captures a mergeable checkpoint of the replica's current resolved state.
+    public func snapshot() -> StateSnapshot {
+        StateSnapshot(state: state)
+    }
+
     /// Atomically replaces the replica's resolved state and reconciles the
     /// attached application projection once.
     @discardableResult
