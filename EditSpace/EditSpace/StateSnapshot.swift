@@ -79,7 +79,7 @@ public struct StateSnapshotEntity: Codable, Equatable, Sendable {
     public let arguments: [String: Value]
     public let argumentRegisters: [String: FieldRegister]?
     public let links: [EntityReference]
-    public let linkRegisters: [EntityReference: LinkRegister]?
+    public let linkRegisters: [StateSnapshotLinkRegister]?
     public let createdBy: OperationID
     public let creationStamp: OperationStamp
     public let updatedBy: OperationID
@@ -94,10 +94,34 @@ public struct StateSnapshotEntity: Codable, Equatable, Sendable {
         self.argumentRegisters = entity.argumentRegisters
         self.links = entity.links.sorted()
         self.linkRegisters = entity.linkRegisters
+            .map { reference, register in
+                StateSnapshotLinkRegister(
+                    reference: reference,
+                    isLinked: register.isLinked,
+                    stamp: register.stamp
+                )
+            }
+            .sorted { $0.reference < $1.reference }
         self.createdBy = entity.createdBy
         self.creationStamp = entity.creationStamp
         self.updatedBy = entity.updatedBy
         self.updatedStamp = entity.updatedStamp
+    }
+}
+
+public struct StateSnapshotLinkRegister: Codable, Equatable, Sendable {
+    public let reference: EntityReference
+    public let isLinked: Bool
+    public let stamp: OperationStamp
+
+    public init(
+        reference: EntityReference,
+        isLinked: Bool,
+        stamp: OperationStamp
+    ) {
+        self.reference = reference
+        self.isLinked = isLinked
+        self.stamp = stamp
     }
 }
 

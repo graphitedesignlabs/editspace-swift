@@ -79,8 +79,19 @@ public struct EntityState: Equatable, Sendable {
                     stamp: snapshot.updatedStamp ?? snapshot.creationStamp
                 )
             }
-        self.linkRegisters = snapshot.linkRegisters
-            ?? Dictionary(
+        self.linkRegisters = snapshot.linkRegisters.map {
+            Dictionary(
+                uniqueKeysWithValues: $0.map {
+                    (
+                        $0.reference,
+                        LinkRegister(
+                            isLinked: $0.isLinked,
+                            stamp: $0.stamp
+                        )
+                    )
+                }
+            )
+        } ?? Dictionary(
                 uniqueKeysWithValues: snapshot.links.map {
                     (
                         $0,
