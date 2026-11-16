@@ -40,7 +40,7 @@ public actor NetworkV1Session {
     public init(
         localPeerID: NetworkPeerID,
         localInstanceID: String? = nil,
-        localCapabilities: [String] = ["application-messages", "dns-sd", "history-ranges", "tcp"],
+        localCapabilities: [String] = ["application-messages", "dns-sd", "history-ranges", "state-snapshots", "tcp"],
         expectedRemotePeerID: NetworkPeerID? = nil,
         repository: NetworkV1Repository,
         selectedSpaces: Set<SpaceID>
@@ -176,6 +176,11 @@ public actor NetworkV1Session {
         }
         var messages: [NetworkV1Message] = []
         for spaceID in activeSpaces.sorted() {
+            if remoteHello.capabilities.contains("state-snapshots") {
+                messages.append(.stateSnapshot(NetworkV1StateSnapshot(
+                    snapshot: await repository.makeStateSnapshot(for: spaceID, neighbor: remotePeerID)
+                )))
+            }
             let summary = await repository.makeSummary(for: spaceID, neighbor: remotePeerID)
             messages.append(.historySummary(summary))
         }
@@ -185,6 +190,12 @@ public actor NetworkV1Session {
     private func receiveSynchronization(_ message: NetworkV1Message) async throws -> [NetworkV1Message] {
         guard let remotePeerID else { return try fail(.unexpectedMessage, "Missing remote identity") }
         switch message {
+        case .stateSnapshot(let message):
+            guard remoteHello?.capabilities.contains("state-snapshots") == true,
+                  activeSpaces.contains(await repository.canonicalSpaceID(for: message.snapshot.spaceID)) else {
+                return try fail(.invalidMessage, "Snapshot is outside the active spaces")
+            }
+            return []
         case .historySummary(let summary):
             for declaration in summary.spaceMerges.declarations {
                 await repository.addMerge(declaration, from: remotePeerID)

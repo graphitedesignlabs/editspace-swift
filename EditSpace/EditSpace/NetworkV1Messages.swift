@@ -266,6 +266,26 @@ public struct NetworkV1SyncComplete: Codable, Equatable, Sendable {
     }
 }
 
+/// A first-class resolved-state bootstrap sent during peer synchronization.
+/// Operation-range reconciliation still follows so both peers retain history.
+public struct NetworkV1StateSnapshot: Codable, Equatable, Sendable {
+    public static let kind = "editspace.network.state-snapshot"
+
+    public let kind: String
+    public let schemaVersion: Int
+    public let snapshot: StateSnapshot
+
+    public init(snapshot: StateSnapshot) {
+        kind = Self.kind
+        schemaVersion = 1
+        self.snapshot = snapshot
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, schemaVersion = "v", snapshot
+    }
+}
+
 /// Ephemeral application data carried beside durable EditSpace operations.
 /// These messages are never retained or replayed as document history.
 public struct NetworkV1ApplicationMessage: Codable, Equatable, Sendable {
@@ -356,6 +376,7 @@ public enum NetworkV1Message: Equatable, Sendable {
     case historySummary(NetworkV1HistorySummary)
     case operationRequest(NetworkV1OperationRequest)
     case operationBatch(NetworkV1OperationBatch)
+    case stateSnapshot(NetworkV1StateSnapshot)
     case syncComplete(NetworkV1SyncComplete)
     case application(NetworkV1ApplicationMessage)
     case error(NetworkV1ErrorMessage)
@@ -373,6 +394,7 @@ extension NetworkV1Message: Codable {
         case NetworkV1HistorySummary.kind: self = .historySummary(try NetworkV1HistorySummary(from: decoder))
         case NetworkV1OperationRequest.kind: self = .operationRequest(try NetworkV1OperationRequest(from: decoder))
         case NetworkV1OperationBatch.kind: self = .operationBatch(try NetworkV1OperationBatch(from: decoder))
+        case NetworkV1StateSnapshot.kind: self = .stateSnapshot(try NetworkV1StateSnapshot(from: decoder))
         case NetworkV1SyncComplete.kind: self = .syncComplete(try NetworkV1SyncComplete(from: decoder))
         case NetworkV1ApplicationMessage.kind: self = .application(try NetworkV1ApplicationMessage(from: decoder))
         case NetworkV1ErrorMessage.kind: self = .error(try NetworkV1ErrorMessage(from: decoder))
@@ -388,6 +410,7 @@ extension NetworkV1Message: Codable {
         case .historySummary(let value): try value.encode(to: encoder)
         case .operationRequest(let value): try value.encode(to: encoder)
         case .operationBatch(let value): try value.encode(to: encoder)
+        case .stateSnapshot(let value): try value.encode(to: encoder)
         case .syncComplete(let value): try value.encode(to: encoder)
         case .application(let value): try value.encode(to: encoder)
         case .error(let value): try value.encode(to: encoder)
@@ -453,6 +476,13 @@ enum NetworkV1Validator {
             guard batch.kind == NetworkV1OperationBatch.kind, batch.schemaVersion == 1,
                   batch.envelopes.allSatisfy({ $0.kind == OperationEnvelope.kind && $0.schemaVersion == 1 }) else {
                 throw NetworkV1CodecError.invalidMessage("Invalid operationBatch")
+            }
+        case .stateSnapshot(let message):
+            guard message.kind == NetworkV1StateSnapshot.kind,
+                  message.schemaVersion == 1,
+                  message.snapshot.kind == StateSnapshot.kind,
+                  message.snapshot.schemaVersion <= StateSnapshot.currentSchemaVersion else {
+                throw NetworkV1CodecError.invalidMessage("Invalid stateSnapshot")
             }
         case .syncComplete(let complete):
             guard complete.kind == NetworkV1SyncComplete.kind, complete.schemaVersion == 1,

@@ -445,3 +445,53 @@ private func networkOperation(
     #expect(await sessionA.state == .live)
     #expect(await sessionB.state == .live)
 }
+
+@Test func stateSnapshotMessageRoundTripsThroughNetworkCodec() async throws {
+    let repository = NetworkV1Repository(spaces: [networkSpaceID])
+    let operation = networkOperation(name: "Initial cube")
+    #expect(await repository.appendLocal(operation) == .appended)
+    let snapshot = await repository.makeStateSnapshot(for: networkSpaceID, neighbor: peerB)
+    let message = NetworkV1Message.stateSnapshot(NetworkV1StateSnapshot(snapshot: snapshot))
+
+    let encoded = try NetworkV1MessageCodec.encode(message)
+
+    #expect(try NetworkV1MessageCodec.decode(encoded) == message)
+    #expect(snapshot.entities.map(\.reference.id.rawValue) == ["cube-1"])
+}
+
+@Test func initialSceneSnapshotPrecedesHistoryReconciliation() async throws {
+    let repositoryA = NetworkV1Repository(spaces: [networkSpaceID])
+    let repositoryB = NetworkV1Repository(spaces: [networkSpaceID])
+    let operation = networkOperation(name: "Already visible")
+    #expect(await repositoryA.appendLocal(operation) == .appended)
+    let sessionA = NetworkV1Session(
+        localPeerID: peerA,
+        expectedRemotePeerID: peerB,
+        repository: repositoryA,
+        selectedSpaces: [networkSpaceID]
+    )
+    let sessionB = NetworkV1Session(
+        localPeerID: peerB,
+        expectedRemotePeerID: peerA,
+        repository: repositoryB,
+        selectedSpaces: [networkSpaceID]
+    )
+
+    let helloA = try #require(await sessionA.initialMessages().first)
+    let helloB = try #require(await sessionB.initialMessages().first)
+    let selectionFromB = try #require(try await sessionB.receive(helloA).first)
+    let selectionFromA = try #require(try await sessionA.receive(helloB).first)
+    let bootstrapFromA = try await sessionA.receive(selectionFromB)
+    _ = try await sessionB.receive(selectionFromA)
+
+    guard case .stateSnapshot(let message) = bootstrapFromA.first else {
+        Issue.record("Expected the initial state snapshot before history summary")
+        return
+    }
+    #expect(message.snapshot.entities.map(\.reference.id.rawValue) == ["cube-1"])
+    #expect(message.snapshot.entities.first?.fieldRegisters["name"]?.value == .string("Already visible"))
+    #expect(bootstrapFromA.dropFirst().contains { message in
+        if case .historySummary = message { return true }
+        return false
+    })
+}

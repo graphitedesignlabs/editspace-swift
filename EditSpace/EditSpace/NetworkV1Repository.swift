@@ -144,6 +144,19 @@ public actor NetworkV1Repository {
         )
     }
 
+    /// Materializes the state this repository is permitted to share with one
+    /// neighbor. This is the authoritative initial-scene bootstrap; history
+    /// summaries remain responsible for durable operation reconciliation.
+    public func makeStateSnapshot(for spaceID: SpaceID, neighbor: NetworkPeerID) -> StateSnapshot {
+        let canonical = mergeRegistry.canonicalSpaceID(for: spaceID)
+        let component = mergeRegistry.equivalentSpaceIDs(to: canonical)
+        let eligible = operationsByID.values.filter {
+            component.contains($0.operation.spaceID) && isEligible($0.provenance, for: neighbor)
+        }.map(\.operation).sorted(by: operationOrder)
+        let state = Materializer().materialize(spaceID: canonical, operations: eligible)
+        return StateSnapshot(state: state)
+    }
+
     public func missingRanges(from summary: NetworkV1HistorySummary) -> [NetworkV1ActorRanges] {
         let local = operations(in: summary.spaceID)
         let sequences = Dictionary(grouping: local, by: \.actorID)

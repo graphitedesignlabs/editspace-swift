@@ -41,6 +41,7 @@ public enum NetworkV1NodeEvent: Sendable {
     case synchronized(NetworkPeerID)
     case disconnected(NetworkPeerID?, String?)
     case received(EditOperation, from: NetworkPeerID)
+    case receivedStateSnapshot(StateSnapshot, from: NetworkPeerID)
     case receivedPresence(PresenceEnvelope, from: NetworkPeerID)
     case receivedApplicationMessage(NetworkV1ApplicationMessage, from: NetworkPeerID)
     case error(NetworkV1ErrorMessage, from: NetworkPeerID?)
@@ -671,6 +672,9 @@ private final class NetworkV1Link: @unchecked Sendable {
                         onEvent?(.received(operation, from: remotePeerID))
                     }
                 }
+            }
+            if case .stateSnapshot(let stateSnapshot) = message, let remotePeerID {
+                onEvent?(.receivedStateSnapshot(stateSnapshot.snapshot, from: remotePeerID))
             }
             if case .application(let application) = message, let remotePeerID {
                 if application.channel == PresenceEnvelope.kind,
